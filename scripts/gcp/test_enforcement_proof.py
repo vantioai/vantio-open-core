@@ -59,6 +59,23 @@ def _cargo_workdir_is_checkout(workdir: str, volume: str, checkout: Path) -> boo
     return volume == f"{root}:{root}:ro"
 
 
+def _writable_target_outside_checkout(volumes: list[str], checkout: Path) -> bool:
+    """True when eBPF's target dir is a writable bind outside the read-only checkout."""
+    root = str(checkout.resolve())
+    wanted = f"{root}/target"
+    found = False
+    for volume in volumes:
+        host, sep, dest = volume.partition(":")
+        if sep != ":" or dest != wanted:
+            continue
+        if not host.startswith("/"):
+            return False
+        if host == root or host.startswith(root + os.sep) or root.startswith(host + os.sep):
+            return False
+        found = True
+    return found
+
+
 class PinAndOrderTests(unittest.TestCase):
     def test_only_the_pinned_tip_passes(self) -> None:
         self.assertTrue(ep.sha_ok(PIN))
@@ -496,6 +513,182 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertEqual(workdir, "/src")
             self.assertIn("phantom-engine:/src:ro", volumes)
             self.assertFalse(_cargo_workdir_is_checkout(workdir, "phantom-engine:/src:ro", checkout))
+
+    def test_ebpf_target_is_a_writable_bind_outside_the_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            workdir = args[args.index("-w") + 1]
+            volumes = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
+            self.assertIn(f"{workdir}:{workdir}:ro", volumes)
+            self.assertTrue(_writable_target_outside_checkout(volumes, checkout))
+            self.assertTrue((checkout.resolve() / "target").is_dir())
+            text = BUILD.read_text(encoding="utf-8")
+            self.assertIn('-v "$writable:$src/target"', text)
+            self.assertIn('rm -rf "$writable" >/dev/null 2>&1 || true', text)
+            self.assertIn('chown -R "${HOST_UID}:${HOST_GID}" "$(pwd)/target" /out', text)
+            mutated = text.replace('-v "$writable:$src/target"', '-v "$writable:$src/target:ro"', 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            script.write_text(mutated, encoding="utf-8")
+            mutated_run = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(mutated_run.returncode, 0, mutated_run.stderr)
+            mutated_args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            mutated_volumes = [mutated_args[i + 1] for i, arg in enumerate(mutated_args) if arg == "-v"]
+            self.assertFalse(_writable_target_outside_checkout(mutated_volumes, checkout))
+
+    def test_writable_target_inside_the_checkout_does_not_start_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            mktemp = Path(env["PATH"].split(":", 1)[0]) / "mktemp"
+            inside = checkout / "nested-target"
+            mktemp.write_text(
+                "#!/bin/sh\nprintf '%s\\n' \"$FAKE_MKTEMP\"\n",
+                encoding="utf-8",
+            )
+            mktemp.chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env={**env, "FAKE_MKTEMP": str(inside)},
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_target", done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            text = BUILD.read_text(encoding="utf-8")
+            needle = '  "$src"|"$src"/*) echo "pe_target" >&2; exit 1 ;;\n'
+            self.assertIn(needle, text)
+            mutated = text.replace(needle, "", 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            script.write_text(mutated, encoding="utf-8")
+            (root / "docker.log").unlink(missing_ok=True)
+            broken = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env={**env, "FAKE_MKTEMP": str(inside)},
+                check=False,
+            )
+            self.assertNotIn("pe_target", broken.stderr)
+            self.assertTrue((root / "docker.log").exists())
+
+    def test_failed_target_cleanup_does_not_fail_the_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            rm = Path(env["PATH"].split(":", 1)[0]) / "rm"
+            rm.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            rm.chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("loader_built=1", done.stdout)
+            text = BUILD.read_text(encoding="utf-8")
+            needle = 'rm -rf "$writable" >/dev/null 2>&1 || true'
+            self.assertIn(needle, text)
+            mutated = text.replace(needle, 'rm -rf "$writable"', 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            script.write_text(mutated, encoding="utf-8")
+            broken = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(broken.returncode, 0)
+            self.assertIn("loader_built=1", broken.stdout)
+
+    def test_relative_src_does_not_start_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            done = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    "pwd() { printf 'relative-src\\n'; }; export -f pwd; exec bash \"$1\" \"$2\" \"$3\" \"$4\"",
+                    "bash",
+                    str(BUILD),
+                    str(checkout),
+                    str(root / "out"),
+                    PIN,
+                ],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_src", done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            text = BUILD.read_text(encoding="utf-8")
+            needle = '  *) echo "pe_src" >&2; exit 1 ;;\n'
+            self.assertIn(needle, text)
+            mutated = text.replace(needle, "", 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            script.write_text(mutated, encoding="utf-8")
+            broken = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    "pwd() { printf 'relative-src\\n'; }; export -f pwd; exec bash \"$1\" \"$2\" \"$3\" \"$4\"",
+                    "bash",
+                    str(script),
+                    str(checkout),
+                    str(root / "out"),
+                    PIN,
+                ],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotIn("pe_src", broken.stderr)
+            self.assertNotEqual(broken.returncode, 0)
+            self.assertFalse((root / "docker.log").exists())
 
 
 class TeardownTests(unittest.TestCase):
