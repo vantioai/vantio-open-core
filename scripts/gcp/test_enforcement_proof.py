@@ -39,7 +39,8 @@ def _accepted_compare() -> str:
         "enforce_inside=connect where=inside result=timeout errno=0 elapsed_ms=1500.0",
         "enforce_outside=connect where=outside result=connected errno=0 elapsed_ms=2.0",
         "drop_counter=source=tcpdump inside=0 outside=2",
-        f"ledger_drop=type={pg.EXPECTED_DROP_EVENT} bytes={pg.SENT_PACKET_LENGTH} sent={pg.SENT_PACKET_LENGTH}",
+        f"sent_packet=transport=tcp payload=0 bytes={pg.TCP_SYN_BYTES}",
+        f"ledger_drop=type={pg.EXPECTED_DROP_EVENT} bytes={pg.TCP_SYN_BYTES} sent={pg.TCP_SYN_BYTES} drop_path={pg.EXPECTED_DROP_PATH}",
         "compare=PASS",
         "live_enforcement=NOT_PROVEN",
     ]
@@ -58,19 +59,23 @@ def _accepted_file_deny() -> str:
 
 
 def _accepted_root_detach() -> str:
-    sent = pg.SENT_PACKET_LENGTH
+    sent = pg.TCP_SYN_BYTES
     event = pg.EXPECTED_DROP_EVENT
+    path = pg.EXPECTED_DROP_PATH
     lines = [
         "root_detach_uid=0",
         "root_detach_lsm=present",
         "root_detach_actor=outside_loader",
         "root_detach_attempt=prog_detach target=id-46 result=refused errno=1",
         "root_detach_attempt=link_detach target=vantio_link result=refused errno=1",
-        "root_detach_attempt=unlink target=vantio_prog result=refused errno=13",
+        "root_detach_attempt=map_update target=vantio_enrolled_cgroups result=refused errno=1",
+        "root_detach_attempt=unlink target=vantio_prog result=refused errno=1",
+        "root_detach_attempt=rename target=vantio_prog result=refused errno=1",
         "root_detach_programs_remain=yes",
         "root_detach_pins_remain=yes",
+        f"sent_packet=transport=tcp payload=0 bytes={sent}",
         "root_detach_inside=connect where=inside result=timeout errno=0 elapsed_ms=1500.0",
-        f"root_detach_ledger=type={event} bytes={sent} sent={sent}",
+        f"root_detach_ledger=type={event} bytes={sent} sent={sent} drop_path={path}",
         "root_detach=PASS",
         "live_enforcement=NOT_PROVEN",
     ]
@@ -81,11 +86,83 @@ def _accepted_reboot() -> str:
     return "\n".join(
         [
             "reboot_wiped=PASS",
-            "reboot_restored=NOT_RUN",
+            "reboot_restored=PASS",
             f"reboot_pre_boot_id={BEFORE}",
             f"reboot_post_boot_id={AFTER}",
+            "reboot_post_inside=connect where=inside result=timeout errno=0 elapsed_ms=1",
         ]
     ) + "\n"
+
+
+def _accepted_signals() -> str:
+    lines = [
+        f"signal={name} result=refused pins=remain connect=blocked" for name in ("SIGINT", "SIGTERM", "SIGHUP")
+    ]
+    lines.append("signal_process=up")
+    return "\n".join(lines) + "\n"
+
+
+def _accepted_boundary() -> str:
+    return "\n".join(
+        [
+            "boundary_unlisted=blocked",
+            "boundary_exception=connected",
+            "boundary_expired=blocked",
+            "boundary_unsigned=blocked",
+            "boundary_stop=restored",
+        ]
+    ) + "\n"
+
+
+def _accepted_oom() -> str:
+    return "\n".join(
+        [
+            "oom_killed=yes",
+            "oom_programs=remain",
+            "oom_inside=connect where=inside result=timeout errno=0 elapsed_ms=1",
+        ]
+    ) + "\n"
+
+
+def _accepted_escapes() -> str:
+    return "".join(f"escape_{name}=denied errno=1\n" for name in pg.ESCAPE_KINDS)
+
+
+def _accepted_clock() -> str:
+    return "clock_moved=yes\nclock_exp_passed=yes\nclock_enforcement=fail_closed\n"
+
+
+def _accepted_fork() -> str:
+    return "\n".join(
+        [
+            "fork_parent=connect where=parent result=timeout errno=0 elapsed_ms=1.0",
+            "fork_child=connect where=child result=timeout errno=0 elapsed_ms=1.0",
+            "fork_grandchild=connect where=grandchild result=timeout errno=0 elapsed_ms=1.0",
+            "fork_clone3=connect where=clone3 result=timeout errno=0 elapsed_ms=1.0",
+            "fork_outsider=connect where=outsider result=connected errno=0 elapsed_ms=1.0",
+            "fork_trace=parent=ab child=ab grandchild=ab",
+            "fork_anchor=parent=7 child=7 grandchild=7",
+            "fork_inherit=PASS",
+        ]
+    ) + "\n"
+
+
+def _phase_text() -> dict[str, str]:
+    return {
+        "compare": _accepted_compare(),
+        "root-detach": _accepted_root_detach(),
+        "signals": _accepted_signals(),
+        "file-deny": _accepted_file_deny(),
+        "fork-inherit": _accepted_fork(),
+        "same-boundary": _accepted_boundary(),
+        "oom": _accepted_oom(),
+        "escapes": _accepted_escapes(),
+        "clock": _accepted_clock(),
+        "reboot-pre": "reboot_pre=RECORDED\n",
+        "reboot-post": _accepted_reboot(),
+        "expired-key": "license_exp_claim=REFUSED\nlicense_exp_observation=REFUSED\n",
+        "uninstall": "uninstall=REFUSED_NOT_ENROLLED\n",
+    }
 
 
 def _replace_prefix(lines: list[str], prefix: str, replacement: str) -> list[str]:
@@ -282,15 +359,7 @@ class RunTests(unittest.TestCase):
                 self.commands.append(command)
                 if command.startswith("sudo bash ") and "run-proof-phase.sh" in command:
                     phase = command.rsplit(" ", 1)[-1].strip("'")
-                    lines = {
-                        "compare": _accepted_compare(),
-                        "root-detach": _accepted_root_detach(),
-                        "file-deny": _accepted_file_deny(),
-                        "reboot-pre": "reboot_pre=RECORDED\n",
-                        "reboot-post": _accepted_reboot(),
-                        "expired-key": "license_exp_claim=REFUSED\nlicense_exp_observation=REFUSED\n",
-                        "uninstall": "uninstall=REFUSED_NOT_ENROLLED\n",
-                    }
+                    lines = _phase_text()
                     rc = 2 if phase == "uninstall" else 0
                     return subprocess.CompletedProcess([], rc, lines[phase], "")
                 if "systemctl reboot --force" in command:
@@ -874,12 +943,27 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(ep.WORKFLOW_FILE, lab_auto.WORKFLOWS)
         sheet = (ROOT / "docs/lab/enforcement-proof-OPERATOR.md").read_text(encoding="utf-8")
         self.assertIn(
-            "compare, root-detach, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
+            "compare, root-detach, signals, file-deny, fork-inherit, same-boundary, oom, escapes, clock, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
             sheet,
         )
 
 
 class FailClosedTests(unittest.TestCase):
+    def test_edited_timeout_transcript_is_not_a_pass_when_executed(self) -> None:
+        lines = [line for line in _accepted_compare().splitlines() if not line.startswith("drop_counter=")]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "transcript.txt"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            done = subprocess.run(
+                ["python3", str(ROOT / "scripts/gcp/proof_grade.py"), "compare-verdict", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(done.returncode, 0)
+        self.assertNotEqual(done.stdout.strip(), "PASS")
+        self.assertIn("FAIL", done.stdout)
+
     def test_timeout_and_loader_row_without_a_counter_is_not_pass(self) -> None:
         lines = [line for line in _accepted_compare().splitlines() if not line.startswith("drop_counter=")]
         self.assertEqual(pg.compare_verdict(lines), "FAIL_UNATTRIBUTED")
@@ -936,22 +1020,49 @@ class FailClosedTests(unittest.TestCase):
 
     def test_mismatched_ledger_type_and_byte_length_fail(self) -> None:
         other = "NETWORK_BLOCK" if pg.EXPECTED_DROP_EVENT != "NETWORK_BLOCK" else "CGROUP_BLOCK"
-        rows = [{"EventType": other, "ActionTaken": "BLOCKED", "BytesSevered": pg.SENT_PACKET_LENGTH}]
-        self.assertFalse(pg.ledger_rows_ok(rows))
+        rows = [
+            {
+                "EventType": other,
+                "ActionTaken": "BLOCKED",
+                "BytesSevered": pg.TCP_SYN_BYTES,
+                "DropPath": pg.EXPECTED_DROP_PATH,
+            }
+        ]
+        self.assertFalse(pg.ledger_rows_ok(rows, pg.TCP_SYN_BYTES))
         self.assertIn("type=MISMATCH", pg.ledger_line(json.dumps(rows[0])))
-        matched = {"EventType": pg.EXPECTED_DROP_EVENT, "ActionTaken": "BLOCKED", "BytesSevered": pg.SENT_PACKET_LENGTH}
-        self.assertTrue(pg.ledger_rows_ok([matched, rows[0]]))
+        matched = {
+            "EventType": pg.EXPECTED_DROP_EVENT,
+            "ActionTaken": "BLOCKED",
+            "BytesSevered": pg.TCP_SYN_BYTES,
+            "DropPath": pg.EXPECTED_DROP_PATH,
+        }
+        self.assertTrue(pg.ledger_rows_ok([matched, rows[0]], pg.TCP_SYN_BYTES))
         mutated = dict(matched)
-        mutated["BytesSevered"] = pg.SENT_PACKET_LENGTH + 1
-        self.assertFalse(pg.ledger_rows_ok([mutated]))
-        self.assertFalse(pg.ledger_rows_ok([matched], sent_len=pg.SENT_PACKET_LENGTH + 1))
+        mutated["BytesSevered"] = pg.TCP_SYN_BYTES + 1
+        self.assertFalse(pg.ledger_rows_ok([mutated], pg.TCP_SYN_BYTES))
+        self.assertFalse(pg.ledger_rows_ok([matched], sent_len=pg.TCP_SYN_BYTES + 1))
+        payload_only = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "sent_packet=",
+            f"sent_packet=transport=tcp payload={pg.TCP_SYN_BYTES} bytes={pg.TCP_SYN_BYTES}",
+        )
+        self.assertEqual(pg.compare_verdict(payload_only), "FAIL_UNATTRIBUTED")
         bad_line = _replace_prefix(
             _accepted_compare().splitlines(),
             "ledger_drop=",
-            f"ledger_drop=type={other} bytes={pg.SENT_PACKET_LENGTH} sent={pg.SENT_PACKET_LENGTH}",
+            f"ledger_drop=type={other} bytes={pg.TCP_SYN_BYTES} sent={pg.TCP_SYN_BYTES} drop_path={pg.EXPECTED_DROP_PATH}",
         )
         self.assertEqual(pg.compare_verdict(bad_line), "FAIL_UNATTRIBUTED")
         self.assertEqual(pg.compare_verdict(_accepted_compare().splitlines()), "PASS")
+        decoded = (
+            "IP (tos 0x0, ttl 64, id 1, offset 0, flags [DF], proto TCP (6), length 60)\n"
+            "192.0.2.1.40000 > 192.0.2.2.19202: Flags [S], seq 1, win 64240, length 0\n"
+        )
+        observed = pg.sent_packet_from_tcpdump(decoded)
+        self.assertEqual(pg.sent_packet_ok(observed), (60, "tcp"))
+        udp = pg.full_packet_bytes(20, "udp")
+        self.assertEqual(udp, 48)
+        self.assertNotEqual(udp, 20)
 
     def test_not_proven_expired_key_fails_and_a_refusal_passes(self) -> None:
         self.assertFalse(
@@ -976,7 +1087,8 @@ class FailClosedTests(unittest.TestCase):
 
     def test_root_detach_and_fork_inherit_fail_closed(self) -> None:
         wrapper = ep.wrapper_script()
-        self.assertIn("fork_inherit=INCONCLUSIVE", wrapper)
+        self.assertNotIn("fork_inherit=INCONCLUSIVE", wrapper)
+        self.assertIn("lab_stop.py", wrapper)
         self.assertNotIn("root_detach=GAP", wrapper)
         self.assertNotIn("DECISION_NEEDED", wrapper)
         accepted = _accepted_root_detach().splitlines()
@@ -1016,13 +1128,13 @@ class FailClosedTests(unittest.TestCase):
         mismatched = _replace_prefix(
             accepted,
             "root_detach_ledger=",
-            f"root_detach_ledger=type={wrong_type} bytes={pg.SENT_PACKET_LENGTH} sent={pg.SENT_PACKET_LENGTH}",
+            f"root_detach_ledger=type={wrong_type} bytes={pg.TCP_SYN_BYTES} sent={pg.TCP_SYN_BYTES} drop_path={pg.EXPECTED_DROP_PATH}",
         )
         self.assertEqual(pg.root_detach_verdict(mismatched), "FAIL")
         short = _replace_prefix(
             accepted,
             "root_detach_ledger=",
-            f"root_detach_ledger=type={pg.EXPECTED_DROP_EVENT} bytes={pg.SENT_PACKET_LENGTH + 1} sent={pg.SENT_PACKET_LENGTH + 1}",
+            f"root_detach_ledger=type={pg.EXPECTED_DROP_EVENT} bytes={pg.TCP_SYN_BYTES + 1} sent={pg.TCP_SYN_BYTES + 1} drop_path={pg.EXPECTED_DROP_PATH}",
         )
         self.assertEqual(pg.root_detach_verdict(short), "FAIL")
         self.assertEqual(rda.classify(0, issued=True), "ok")
@@ -1046,9 +1158,20 @@ class FailClosedTests(unittest.TestCase):
         changed = _replace_prefix(good, "fork_trace=", "fork_trace=parent=ab child=cd grandchild=ab")
         self.assertEqual(pg.fork_inherit_verdict(changed), "FAIL_UNATTRIBUTED")
         plan = ep.public_plan("full")
-        self.assertEqual(plan["root_detach_on_pe_tip"], "FAIL")
-        self.assertEqual(plan["stub_phases"], ["fork-inherit"])
-        self.assertNotIn("fork-inherit", plan["phases"])
+        eacces = _replace_prefix(
+            accepted,
+            "root_detach_attempt=unlink",
+            "root_detach_attempt=unlink target=vantio_prog result=refused errno=13",
+        )
+        self.assertEqual(pg.root_detach_verdict(eacces), "FAIL")
+        self.assertEqual(plan["root_detach_on_pe_tip"], "PASS_IF_ERRNO_1")
+        self.assertEqual(plan["stub_phases"], [])
+        self.assertIn("fork-inherit", plan["phases"])
+        self.assertIn("signals", plan["phases"])
+        self.assertIn("same-boundary", plan["phases"])
+        self.assertIn("oom", plan["phases"])
+        self.assertIn("escapes", plan["phases"])
+        self.assertIn("clock", plan["phases"])
         self.assertIn("root-detach", plan["phases"])
         self.assertLess(plan["phases"].index("compare"), plan["phases"].index("root-detach"))
         self.assertLess(plan["phases"].index("root-detach"), plan["phases"].index("file-deny"))
@@ -1116,6 +1239,20 @@ class FailClosedTests(unittest.TestCase):
         )
         missing = [line for line in _accepted_reboot().splitlines() if not line.startswith("reboot_pre_boot_id=")]
         self.assertFalse(ep.phase_accepted("reboot-post", missing, 0))
+        not_run = _accepted_reboot().replace("reboot_restored=PASS", "reboot_restored=NOT_RUN").splitlines()
+        self.assertFalse(ep.phase_accepted("reboot-post", not_run, 0))
+        detached = _accepted_signals().replace("result=refused", "result=detached", 1).splitlines()
+        self.assertEqual(pg.signal_verdict(detached), "FAIL")
+        self.assertTrue(ep.phase_accepted("signals", _accepted_signals().splitlines(), 0))
+        self.assertTrue(ep.phase_accepted("same-boundary", _accepted_boundary().splitlines(), 0))
+        expired_open = _accepted_boundary().replace("boundary_expired=blocked", "boundary_expired=connected").splitlines()
+        self.assertEqual(pg.same_boundary_verdict(expired_open), "FAIL")
+        self.assertTrue(ep.phase_accepted("oom", _accepted_oom().splitlines(), 0))
+        self.assertEqual(pg.oom_verdict(_accepted_oom().replace("oom_killed=yes", "oom_killed=no").splitlines()), "FAIL")
+        self.assertTrue(ep.phase_accepted("escapes", _accepted_escapes().splitlines(), 0))
+        self.assertEqual(pg.escapes_verdict(_accepted_escapes().replace("escape_memfd=denied", "escape_memfd=ok", 1).splitlines()), "FAIL")
+        self.assertTrue(ep.phase_accepted("clock", _accepted_clock().splitlines(), 0))
+        self.assertEqual(pg.clock_verdict(_accepted_clock().replace("fail_closed", "open").splitlines()), "FAIL")
 
     def test_not_proven_stops_before_uninstall(self) -> None:
         class Fake:

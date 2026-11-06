@@ -1,7 +1,7 @@
 name: GCP lab enforcement proof
 
 # Customer-install enforcement proof for Phantom Engine commit
-# 864289cb2c9c4135d74233c74c6655087de3f20d. That value is a git tip, not a seal.
+# 48c95504413032af8e162297c98c70829000da60. That value is a git tip, not a seal.
 # gcp-lab-provision.yml is the sealed-bundle path and does not run
 # scripts/enforcement_proof_lab.sh.
 #
@@ -26,9 +26,9 @@ on:
   workflow_dispatch:
     inputs:
       pe_git_sha:
-        description: Phantom Engine git tip. Must be 864289cb2c9c4135d74233c74c6655087de3f20d. Not a seal.
+        description: Phantom Engine git tip. Must be 48c95504413032af8e162297c98c70829000da60. Not a seal.
         required: true
-        default: 864289cb2c9c4135d74233c74c6655087de3f20d
+        default: 48c95504413032af8e162297c98c70829000da60
         type: string
       run_go:
         description: Zach's own-words run go. Not printed.
@@ -252,7 +252,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vantioai/vantio-phantom-engine
-          ref: 864289cb2c9c4135d74233c74c6655087de3f20d
+          ref: 48c95504413032af8e162297c98c70829000da60
           token: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
           persist-credentials: false
           path: phantom-engine
@@ -309,7 +309,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${{ runner.temp }}/pe-loader"
-          vantio run bash scripts/gcp/build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine" "${{ runner.temp }}/pe-loader" 864289cb2c9c4135d74233c74c6655087de3f20d
+          vantio run bash scripts/gcp/build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine" "${{ runner.temp }}/pe-loader" 48c95504413032af8e162297c98c70829000da60
 
       - name: Upload the loader for the proof job
         if: success()

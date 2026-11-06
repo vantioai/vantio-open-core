@@ -12,7 +12,7 @@ set -euo pipefail
 root=${1:?}
 out=${2:?}
 pin=${3:?}
-expected=864289cb2c9c4135d74233c74c6655087de3f20d
+expected=48c95504413032af8e162297c98c70829000da60
 RUST_TOOLCHAIN=nightly-2026-10-13
 BPF_LINKER_VERSION=0.12.0
 

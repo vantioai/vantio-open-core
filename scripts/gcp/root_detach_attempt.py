@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -225,10 +226,63 @@ def attempt(cgroup: str, bpffs: str, loader_pid: int) -> list[str]:
     return lines
 
 
+def _prog_id_named(prefix: bytes) -> int:
+    """Program id whose name starts with prefix, or 0 when none is visible."""
+    start = 0
+    for _ in range(256):
+        attr = _GetFd(id=start, next_id=0, open_flags=0)
+        rc, _err = _bpf(11, attr)
+        if rc != 0 or attr.next_id == 0:
+            return 0
+        start = int(attr.next_id)
+        got, err = _bpf(BPF_PROG_GET_FD_BY_ID, _GetFd(id=start, next_id=0, open_flags=0))
+        if got < 0 or err:
+            continue
+        info = ctypes.create_string_buffer(256)
+        info_attr = _Info()
+        info_attr.bpf_fd = got
+        info_attr.info_len = 256
+        info_attr.info = ctypes.addressof(info)
+        _bpf(BPF_OBJ_GET_INFO_BY_FD, info_attr)
+        os.close(got)
+        name = info.raw[64:80]
+        if name.startswith(prefix):
+            return start
+    return 0
+
+
+def canary_lines(loader: str, cgroup: str, pin: str) -> list[str]:
+    """Run the loader's root canaries. Each child exits with the errno."""
+    prog_id = _prog_id_named(b"cgroup_skb")
+    commands = [
+        (
+            "prog_detach",
+            f"id-{prog_id}",
+            [loader, "--root-detach-canary", cgroup, "--root-detach-type", "1", "--root-detach-prog-id", str(prog_id)],
+        ),
+        ("link_detach", "vantio_link", [loader, "--root-link-canary"]),
+        ("map_update", pin, [loader, "--root-map-canary", pin]),
+        ("unlink", pin, [loader, "--root-unlink-canary", pin]),
+        ("rename", pin, [loader, "--root-rename-canary", pin]),
+    ]
+    lines = ["root_detach_actor=outside_loader"]
+    for kind, target, cmd in commands:
+        done = subprocess.run(cmd, check=False)
+        code = done.returncode
+        errno = code if code is not None and code > 0 else (0 if code == 0 else 128)
+        result = "ok" if errno == 0 else classify(errno, issued=True)
+        lines.append(f"root_detach_attempt={kind} target={target} result={result} errno={errno}")
+    return lines
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if len(args) == 3 and Path(args[0]).is_file() and os.access(args[0], os.X_OK):
+        for line in canary_lines(args[0], args[1], args[2]):
+            print(line)
+        return 0
     if len(args) != 3:
-        print("usage: root_detach_attempt.py CGROUP BPFFS LOADER_PID", file=sys.stderr)
+        print("usage: root_detach_attempt.py LOADER CGROUP PIN", file=sys.stderr)
         return 2
     cgroup, bpffs, raw_pid = args
     try:
