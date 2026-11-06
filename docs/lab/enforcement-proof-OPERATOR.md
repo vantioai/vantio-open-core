@@ -46,7 +46,7 @@ The guest proof and the failure delete are a second call of that same file, with
 
 ## What `full` runs
 
-Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit: `cargo build -p vantio-loader --release`. Cargo's workdir is the `phantom-engine` checkout. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. `bpf-linker` is installed the same unpinned way as the Phantom Engine Dockerfile at this tip, so two builds can differ.
+Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit: `cargo +nightly-2026-10-13 build -p vantio-loader --release`. Cargo's workdir is the `phantom-engine` checkout. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. Rust is pinned to `nightly-2026-10-13` and `bpf-linker` is pinned to `0.12.0`. The checkout's toolchain file says `nightly`; the build script overrides it.
 
 `full` runs these guest phases in this order: compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
 
@@ -84,7 +84,11 @@ The concurrency group is `vantio-gce-slot`. A VM left up blocks the next lab cre
 - `reboot_restored` stays `NOT_RUN`.
 - An offline pass of this repository does not show a new boot id, a ledger row, or that a VM was created or removed.
 - `uninstall=REFUSED_NOT_ENROLLED` means compare's SIGINT detach left the host unenrolled. It is not `UNINSTALL_VERIFIED`.
-- `license_exp_claim=NOT_PROVEN` and `license_exp_observation=NOT_CONSULTED` are the expected observation on this tip. They are not a license refusal.
+- `license_exp_claim=NOT_PROVEN` fails the `expired-key` phase. It is not an accepted observation. `license_exp_claim=REFUSED` with `license_exp_observation=REFUSED` is the line that means the loader refused an expired signature. This tip's loader does not refuse `exp`, so that phase fails closed.
+- `compare=PASS` is accepted only when the enrolled connect times out or returns errno 1, the outside connect succeeds, an nft, iptables, or tcpdump counter confirms the drop, and the ledger row's `EventType` is `CGROUP_BLOCK` with `BytesSevered` equal to the sent length 60. The loader ndjson is not that counter. A `NETWORK_BLOCK` row alone does not pass on this tip.
+- `file-deny` passes only when the enrolled open returns errno 13 and the outside open returns 0.
+- `reboot-post` passes only when the boot id changed.
+- `fork-inherit` and `root-detach` are stub phases. They exit 1 and are not in the `full` success order. `root-detach` stays `DECISION_NEEDED` until a decision is made. `live_enforcement` stays `NOT_PROVEN`.
 - The workflow does not run `scripts/lab_webshell_battery.py`.
 
 Pass and fail lines for council are in the Phantom Engine packet and in `$VANTIO_LAB_DIR/transcript.txt` for the phase that just ran. Each invocation truncates that transcript. The workflow stores each phase log under the proof artifact `gcp-lab-enforcement-proof-<run_id>`.

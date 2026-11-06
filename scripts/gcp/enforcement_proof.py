@@ -28,6 +28,7 @@ from typing import Any, Mapping, Sequence
 
 import lab_auto as lab
 import offline_deliver as od
+import proof_grade as pg
 
 PE_REPO = "vantioai/vantio-phantom-engine"
 PE_GIT_SHA = "864289cb2c9c4135d74233c74c6655087de3f20d"
@@ -54,7 +55,10 @@ GUEST_ENV = f"{GUEST_DIR}/proof.env"
 GUEST_WRAPPER = f"{GUEST_DIR}/run-proof-phase.sh"
 SLICES = ("full", "reboot-pre", "reboot-post")
 SAME_BOOT = frozenset({"file-deny", "reboot-pre", "expired-key", "uninstall", "uninstall-negative"})
-SCRIPT_PHASES = frozenset({"compare", "reboot-post", *SAME_BOOT})
+# fork-inherit and root-detach are fail-closed stubs. They are not in the
+# success order. root-detach stays a gap until a decision is made.
+STUB_PHASES = frozenset({"fork-inherit", "root-detach"})
+SCRIPT_PHASES = frozenset({"compare", "reboot-post", *SAME_BOOT, *STUB_PHASES})
 MIN_MINUTES = 90
 HOST_RE = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 INSTANCE_RE = re.compile(r"^vantio-gcp-lab-[a-z0-9][a-z0-9-]{0,46}$")
@@ -67,12 +71,21 @@ PRIVATE_MARKER = re.compile(
 )
 LINE_VALUES = {
     "compare": frozenset(
-        {"PASS", "REFUSED_LSM", "INCONCLUSIVE", "FAIL_OPEN", "FAIL_UNATTRIBUTED", "FAIL_UNSCOPED", "NOT_ENFORCING"}
+        {
+            "PASS",
+            "REFUSED_LSM",
+            "INCONCLUSIVE",
+            "FAIL_OPEN",
+            "FAIL_UNATTRIBUTED",
+            "FAIL_UNSCOPED",
+            "FAIL_UNEXPECTED_ERRNO",
+            "NOT_ENFORCING",
+        }
     ),
     "file_deny": frozenset(
         {"PASS", "REFUSED_LSM", "NOT_ENFORCING", "FAIL_OPEN", "FAIL_UNATTRIBUTED", "INCONCLUSIVE"}
     ),
-    "license_exp_claim": frozenset({"NOT_PROVEN"}),
+    "license_exp_claim": frozenset({"NOT_PROVEN", "REFUSED"}),
     "license_exp_observation": frozenset({"NOT_CONSULTED", "REFUSED"}),
     "expired_key": frozenset(
         {"FAIL_private_key_remains", "FAIL_production_key_path", "FAIL_credentials_set", "INCONCLUSIVE"}
@@ -86,6 +99,11 @@ LINE_VALUES = {
     "reboot_restored": frozenset({"NOT_RUN", "PASS", "REFUSED_LSM"}),
     "reboot_marker_open": frozenset({"absent"}),
     "live_enforcement": frozenset({"NOT_PROVEN"}),
+    "fork_inherit": frozenset({"PASS", "INCONCLUSIVE", "FAIL_OPEN", "FAIL_UNATTRIBUTED", "FAIL_UNSCOPED"}),
+    "fork_inherit_reason": frozenset({"not_collected"}),
+    "root_detach": frozenset({"GAP"}),
+    "root_detach_decision": frozenset({"DECISION_NEEDED"}),
+    "harness_accept": frozenset({"yes", "no"}),
     "phase_order": frozenset({"compare_required"}),
     "bpf_lsm": frozenset({"present", "absent"}),
     "audit_banner": frozenset(
@@ -100,12 +118,6 @@ LINE_VALUES = {
     "file_deny_row": frozenset({"yes", "no"}),
     "ledger_network_block": frozenset({"yes", "no"}),
 }
-CONNECT_RE = re.compile(
-    r"^connect where=(?:inside|outside) result=(?:connected|timeout|error|cgroup_join_failed|setuid_failed) "
-    r"errno=[0-9]+(?: elapsed_ms=[0-9.]+)?$"
-)
-OPEN_RE = re.compile(r"^result=(?:ok|error|cgroup_join_failed|setuid_failed) errno=[0-9]+$")
-BOOT_RE = re.compile(r"^[0-9a-f-]{1,80}$")
 LOADER_LIB_OK = re.compile(
     r"linux-vdso|ld-linux|libc\.so|libm\.so|libgcc_s\.so|libpthread\.so|libdl\.so|librt\.so|not a dynamic executable"
 )
@@ -299,6 +311,8 @@ def public_plan(slice_name: str) -> dict[str, Any]:
         "pe_repo": PE_REPO,
         "phases": list(phases),
         "project_id": od.LAB_PROJECT,
+        "root_detach": "DECISION_NEEDED",
+        "stub_phases": sorted(STUB_PHASES),
         "public_ip": False,
         "reboot_command": "mask-google-shutdown-scripts-then-systemctl-reboot-force",
         "reboot_restored": "NOT_RUN",
@@ -326,7 +340,25 @@ def wrapper_script() -> str:
             "set +a",
             "unset GOOGLE_APPLICATION_CREDENTIALS || true",
             'if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then echo credentials_set >&2; exit 1; fi',
-            f"exec {GUEST_SCRIPT} --i-understand-this-attaches-ebpf \"$phase\"",
+            'case "$phase" in',
+            "  fork-inherit)",
+            "    printf '%s\\n' fork_inherit=INCONCLUSIVE fork_inherit_reason=not_collected live_enforcement=NOT_PROVEN",
+            "    exit 1",
+            "    ;;",
+            "  root-detach)",
+            "    printf '%s\\n' root_detach=GAP root_detach_decision=DECISION_NEEDED live_enforcement=NOT_PROVEN",
+            "    exit 1",
+            "    ;;",
+            "esac",
+            f'grade="{GUEST_DIR}/proof_grade.py"',
+            'if [[ -f "$grade" ]]; then',
+            "  set +e",
+            f'  {GUEST_SCRIPT} --i-understand-this-attaches-ebpf "$phase"',
+            "  rc=$?",
+            "  set -e",
+            f'  exec python3 "$grade" gate "$phase" "{LAB_DIR}/transcript.txt" "$rc"',
+            "fi",
+            f'exec {GUEST_SCRIPT} --i-understand-this-attaches-ebpf "$phase"',
             "",
         ]
     )
@@ -370,12 +402,29 @@ def keep_line(line: str) -> str | None:
     allowed = LINE_VALUES.get(key)
     if allowed is not None:
         return text if value in allowed else None
-    if key in {"audit_outside", "audit_inside", "enforce_inside", "enforce_outside"}:
-        return text if CONNECT_RE.fullmatch(value) else None
+    if key in {
+        "audit_outside",
+        "audit_inside",
+        "enforce_inside",
+        "enforce_outside",
+        "fork_parent",
+        "fork_child",
+        "fork_grandchild",
+        "fork_stranger",
+    }:
+        return text if pg.CONNECT_RE.fullmatch(value) else None
     if key in {"open_inside", "open_outside"}:
-        return text if OPEN_RE.fullmatch(value) else None
-    if key == "reboot_post_boot_id":
-        return text if value == "missing" or BOOT_RE.fullmatch(value) else None
+        return text if pg.OPEN_RE.fullmatch(value) else None
+    if key in {"reboot_post_boot_id", "reboot_pre_boot_id"}:
+        return text if value == "missing" or pg.BOOT_RE.fullmatch(value) else None
+    if key == "drop_counter":
+        return text if pg.DROP_COUNTER_RE.fullmatch(text) else None
+    if key == "ledger_drop":
+        return text if pg.LEDGER_DROP_RE.fullmatch(text) else None
+    if key == "fork_trace":
+        return text if pg.FORK_TRACE_RE.fullmatch(value) else None
+    if key == "fork_anchor":
+        return text if pg.FORK_ANCHOR_RE.fullmatch(value) else None
     return None
 
 
@@ -388,37 +437,18 @@ def kept_lines(text: str) -> list[str]:
     return found
 
 
-def phase_accepted(phase: str, lines: Sequence[str], returncode: int) -> bool:
-    if returncode == 255:
-        return False
-    if phase == "compare":
-        return returncode == 0 and "compare=PASS" in lines
-    if phase == "file-deny":
-        return returncode == 0 and "file_deny=PASS" in lines
-    if phase == "reboot-pre":
-        return returncode == 0 and "reboot_pre=RECORDED" in lines
-    if phase == "reboot-post":
-        return (
-            returncode == 0
-            and "reboot_wiped=PASS" in lines
-            and "reboot_restored=NOT_RUN" in lines
-        )
-    if phase == "expired-key":
-        if returncode != 0:
-            return False
-        if any(line.startswith("expired_key=FAIL") for line in lines):
-            return False
-        return "license_exp_claim=NOT_PROVEN" in lines
-    if phase == "uninstall":
-        return any(
-            line in lines
-            for line in (
-                "uninstall=VERIFIED",
-                "uninstall=NOT_RUN_NO_APPROVAL",
-                "uninstall=REFUSED_NOT_ENROLLED",
-            )
-        )
-    return False
+def phase_accepted(
+    phase: str,
+    lines: Sequence[str],
+    returncode: int,
+    observed_boots: Mapping[str, str] | None = None,
+) -> bool:
+    """Accept a phase only when proof_grade says the evidence holds.
+
+    compare=PASS, file_deny=PASS, and reboot_wiped=PASS are not sufficient
+    on their own. root-detach is a documented gap and is never accepted.
+    """
+    return pg.phase_decision(phase, lines, returncode, observed_boots)
 
 
 def loader_libs_ok(text: str) -> bool:
@@ -616,6 +646,208 @@ def _owned(instances: Sequence[Mapping[str, Any]], name: str) -> bool:
     return lab.labels_owned(matched.get("labels"), name)
 
 
+_OLD_COMPARE = """  note "enforce_inside=$(connect_once inside "$CGROUP")"
+  note "enforce_outside=$(connect_once outside "")"
+  note "ledger_$(ledger_has_block "$OUT/enforce.ndjson")"
+  stop_loader_int
+  local verdict
+  verdict="$(python3 - "$OUT/transcript.txt" <<'PY'
+import sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read().splitlines()
+def field(prefix):
+    for line in reversed(text):
+        if line.startswith(prefix):
+            return line.split("=", 1)[1]
+    return ""
+audit_out = field("audit_outside=connect where=outside ")
+audit_in = field("audit_inside=connect where=inside ")
+enf_in = field("enforce_inside=connect where=inside ")
+enf_out = field("enforce_outside=connect where=outside ")
+block = any(line.startswith("ledger_network_block=yes") for line in text)
+def connected(item):
+    return "result=connected" in item
+def blocked(item):
+    return "result=timeout" in item or "result=error" in item
+if not (connected(audit_out) and connected(audit_in)):
+    print("INCONCLUSIVE")
+elif connected(enf_in):
+    print("FAIL_OPEN")
+elif not blocked(enf_in):
+    print("INCONCLUSIVE")
+elif not block:
+    print("FAIL_UNATTRIBUTED")
+elif not connected(enf_out):
+    print("FAIL_UNSCOPED")
+else:
+    print("PASS")
+PY
+)"
+"""
+
+_NEW_COMPARE = """  local grade_py inside_line inside_packets inside_source
+  local outside_line outside_packets outside_source
+  grade_py="$(cd "$(dirname "$0")" && pwd)/proof_grade.py"
+  if [[ ! -f "$grade_py" ]]; then
+    note "compare_reason=grade_missing"
+    record_compare "INCONCLUSIVE"
+    finish_not_proven
+    exit 1
+  fi
+  IFS=$'\\t' read -r inside_line inside_packets inside_source < <(measure_connect inside "$CGROUP")
+  note "enforce_inside=${inside_line}"
+  IFS=$'\\t' read -r outside_line outside_packets outside_source < <(measure_connect outside "")
+  note "enforce_outside=${outside_line}"
+  if [[ "$inside_source" == "$outside_source" && "$inside_source" != "missing" && "$inside_packets" != "missing" && "$outside_packets" != "missing" ]]; then
+    note "drop_counter=source=${inside_source} inside=${inside_packets} outside=${outside_packets}"
+  else
+    note "drop_counter=source=missing inside=0 outside=0"
+  fi
+  note "$(python3 "$grade_py" ledger-line "$OUT/enforce.ndjson")"
+  stop_loader_int
+  local verdict
+  verdict="$(python3 "$grade_py" compare-verdict "$OUT/transcript.txt")"
+"""
+
+_MEASURE_FN = r"""measure_connect() {
+  local where="$1"
+  local join="${2:-}"
+  local line packets source iface pcap tpid before after
+  iface="vproof-b"
+  if ! ip link show "$iface" >/dev/null 2>&1; then
+    iface="${IFACE:-}"
+  fi
+  if command -v tcpdump >/dev/null 2>&1 && [[ -n "$iface" ]] && ip link show "$iface" >/dev/null 2>&1; then
+    pcap="$(mktemp)"
+    tcpdump -n -i "$iface" -c 64 -w "$pcap" "host ${TARGET_IP} and port ${TARGET_PORT}" >/dev/null 2>&1 &
+    tpid=$!
+    sleep 0.2
+    line="$(connect_once "$where" "$join")"
+    sleep 0.4
+    kill "$tpid" 2>/dev/null || true
+    wait "$tpid" 2>/dev/null || true
+    packets="$(tcpdump -n -r "$pcap" 2>/dev/null | wc -l | tr -d ' ')"
+    rm -f "$pcap" || true
+    packets="${packets:-0}"
+    printf '%s\t%s\ttcpdump\n' "$line" "$packets"
+    return 0
+  fi
+  if command -v nft >/dev/null 2>&1; then
+    if ! nft list chain inet vantio_proof out >/dev/null 2>&1; then
+      nft add table inet vantio_proof >/dev/null 2>&1 || true
+      nft 'add chain inet vantio_proof out { type filter hook output priority 0 ; }' >/dev/null 2>&1 || true
+      nft add rule inet vantio_proof out ip daddr "${TARGET_IP}" tcp dport "${TARGET_PORT}" counter >/dev/null 2>&1 || true
+    fi
+    before="$(nft list chain inet vantio_proof out 2>/dev/null | awk '/packets/ { for (i = 1; i <= NF; i++) if ($i == "packets") { print $(i + 1); exit } }')"
+    before="${before:-0}"
+    line="$(connect_once "$where" "$join")"
+    after="$(nft list chain inet vantio_proof out 2>/dev/null | awk '/packets/ { for (i = 1; i <= NF; i++) if ($i == "packets") { print $(i + 1); exit } }')"
+    after="${after:-0}"
+    case "${before}${after}" in
+      *[!0-9]*) printf '%s\tmissing\tmissing\n' "$line"; return 0 ;;
+    esac
+    packets="$((after - before))"
+    printf '%s\t%s\tnft\n' "$line" "$packets"
+    return 0
+  fi
+  if command -v iptables >/dev/null 2>&1; then
+    iptables -C OUTPUT -d "${TARGET_IP}/32" -p tcp --dport "${TARGET_PORT}" -j ACCEPT >/dev/null 2>&1 \
+      || iptables -I OUTPUT -d "${TARGET_IP}/32" -p tcp --dport "${TARGET_PORT}" -j ACCEPT >/dev/null 2>&1 \
+      || true
+    before="$(iptables -L OUTPUT -v -n -x | awk -v ip="${TARGET_IP}" -v port="${TARGET_PORT}" '$0 ~ ip && $0 ~ port { print $1; exit }')"
+    before="${before:-0}"
+    line="$(connect_once "$where" "$join")"
+    after="$(iptables -L OUTPUT -v -n -x | awk -v ip="${TARGET_IP}" -v port="${TARGET_PORT}" '$0 ~ ip && $0 ~ port { print $1; exit }')"
+    after="${after:-0}"
+    case "${before}${after}" in
+      *[!0-9]*) printf '%s\tmissing\tmissing\n' "$line"; return 0 ;;
+    esac
+    packets="$((after - before))"
+    printf '%s\t%s\tiptables\n' "$line" "$packets"
+    return 0
+  fi
+  line="$(connect_once "$where" "$join")"
+  printf '%s\tmissing\tmissing\n' "$line"
+}
+
+"""
+
+_OLD_EXPIRED = """  if grep -E "LICENSE_INVALID|license_exp" "$OUT/expired.log" >/dev/null 2>&1; then
+    note "license_exp_observation=REFUSED"
+  else
+    note "license_exp_observation=NOT_CONSULTED"
+  fi
+  note "license_exp_claim=NOT_PROVEN"
+  finish_not_proven
+}
+"""
+
+_NEW_EXPIRED = """  if grep -E "LICENSE_INVALID|license_exp" "$OUT/expired.log" >/dev/null 2>&1; then
+    note "license_exp_observation=REFUSED"
+    note "license_exp_claim=REFUSED"
+    finish_not_proven
+  else
+    note "license_exp_observation=NOT_CONSULTED"
+    note "license_exp_claim=NOT_PROVEN"
+    finish_not_proven
+    exit 1
+  fi
+}
+"""
+
+_OLD_REBOOT = """  note "reboot_post_boot_id=$new"
+  if [[ -z "$old" || "$old" == "$new" ]]; then
+    note "reboot_wiped=INCONCLUSIVE"
+    finish_not_proven
+    exit 0
+  fi
+"""
+
+_NEW_REBOOT = """  note "reboot_pre_boot_id=${old:-missing}"
+  note "reboot_post_boot_id=${new:-missing}"
+  if [[ -z "$old" || -z "$new" || "$old" == "missing" || "$new" == "missing" || "$old" == "$new" ]]; then
+    note "reboot_wiped=INCONCLUSIVE"
+    finish_not_proven
+    exit 1
+  fi
+"""
+
+
+def _stage_grade(dest: Path) -> Path:
+    src = Path(__file__).resolve().with_name("proof_grade.py")
+    target = dest / "proof_grade.py"
+    target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    os.chmod(target, 0o644)
+    return target
+
+
+def harden_lab_script(text: str) -> str:
+    """Patch the copied lab script so a false PASS is not what the guest records.
+
+    A stub without phase_compare is returned unchanged. A lab script that has
+    drifted off the pinned markers fails closed instead of being copied as-is.
+    """
+    if "phase_compare()" not in text:
+        return text
+    missing = [
+        name
+        for name, needle in (
+            ("compare", _OLD_COMPARE),
+            ("expired", _OLD_EXPIRED),
+            ("reboot", _OLD_REBOOT),
+        )
+        if needle not in text
+    ]
+    if missing:
+        raise SystemExit("lab_script_marker")
+    patched = text.replace(_OLD_COMPARE, _NEW_COMPARE, 1)
+    patched = patched.replace("phase_compare() {", _MEASURE_FN + "phase_compare() {", 1)
+    patched = patched.replace(_OLD_EXPIRED, _NEW_EXPIRED, 1)
+    patched = patched.replace(_OLD_REBOOT, _NEW_REBOOT, 1)
+    if 'result=timeout" in item or "result=error" in item' in patched:
+        raise SystemExit("lab_script_marker")
+    return patched
+
+
 def _write_guest_files(env: Mapping[str, str], dest: Path, *, with_loader: bool) -> list[Path]:
     dest.mkdir(parents=True, exist_ok=True)
     env_path = dest / "proof.env"
@@ -624,13 +856,17 @@ def _write_guest_files(env: Mapping[str, str], dest: Path, *, with_loader: bool)
     wrapper = dest / "run-proof-phase.sh"
     wrapper.write_text(wrapper_script(), encoding="utf-8")
     os.chmod(wrapper, 0o755)
-    paths = [env_path, wrapper]
+    paths = [env_path, wrapper, _stage_grade(dest)]
     if not with_loader:
         return paths
     loader_dir = Path(env.get("LOADER_DIR", ""))
     check_loader_dir(loader_dir)
     paths.append(loader_dir / "vantio-loader")
-    paths.append(loader_dir / "enforcement_proof_lab.sh")
+    original = (loader_dir / "enforcement_proof_lab.sh").read_text(encoding="utf-8")
+    hardened = dest / "enforcement_proof_lab.sh"
+    hardened.write_text(harden_lab_script(original), encoding="utf-8")
+    os.chmod(hardened, 0o755)
+    paths.append(hardened)
     deb_dir = Path(env.get("DEB_DIR", ""))
     if not deb_dir.is_dir() or not any(deb_dir.glob("*.deb")):
         raise SystemExit("offline_debs_missing")
@@ -711,6 +947,7 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
             if prepared.returncode != 0:
                 raise SystemExit("guest_prepare")
         compares = 0
+        observed_boots: dict[str, str] = {}
         for index, phase in enumerate(phases, start=1):
             if phase == "reboot":
                 before = transport.boot_id(project, name)
@@ -718,6 +955,7 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
                 text = redact((completed.stdout or "") + (completed.stderr or ""), env)
                 (evidence / f"{index:02d}-reboot.log").write_text(text, encoding="utf-8")
                 after = transport.wait_boot(project, name, before)
+                observed_boots = {"before": before, "after": after}
                 if completed.returncode not in (0, 255) or not od.reboot_ready(before, after):
                     stopped = "reboot"
                     break
@@ -737,7 +975,8 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
             lines = kept_lines(text)
             observations.extend(line for line in lines if line not in observations)
             _pull_tree(transport, project, name, LAB_DIR, evidence / "lab", env)
-            if not phase_accepted(phase, lines, completed.returncode):
+            boots = observed_boots if phase == "reboot-post" else None
+            if not phase_accepted(phase, lines, completed.returncode, boots):
                 stopped = phase
                 break
     except SystemExit as exc:

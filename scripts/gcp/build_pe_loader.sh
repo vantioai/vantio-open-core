@@ -3,12 +3,30 @@
 # This does not run scripts/enforcement_proof_lab.sh. bash -n does not attach a program.
 # The guest is an e2-micro. The compile runs in an ubuntu:24.04 container so the
 # binary matches that guest's glibc. The git tip is not a seal digest.
+#
+# Rust and bpf-linker are pinned. bpf-linker 0.12.0 is built against the LLVM
+# in nightly-2026-10-13. The checkout's rust-toolchain.toml says "nightly";
+# RUSTUP_TOOLCHAIN and cargo + override that file.
 set -euo pipefail
 
 root=${1:?}
 out=${2:?}
 pin=${3:?}
 expected=864289cb2c9c4135d74233c74c6655087de3f20d
+RUST_TOOLCHAIN=nightly-2026-10-13
+BPF_LINKER_VERSION=0.12.0
+
+writable=""
+cleanup_writable() {
+  if [[ -z "${writable:-}" || ! -d "$writable" ]]; then
+    return 0
+  fi
+  chown -R "$(id -u):$(id -g)" "$writable" >/dev/null 2>&1 || true
+  rm -rf "$writable" >/dev/null 2>&1 || true
+}
+# The trap is installed before the guards so a failed pin, dirty tree, or
+# compile still chowns and removes the writable target.
+trap cleanup_writable EXIT
 
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" || -n "${GCP_SA_KEY:-}" ]]; then
   echo "static_credentials" >&2
@@ -31,7 +49,39 @@ if [[ "$head" != "$expected" ]]; then
   echo "pe_head" >&2
   exit 1
 fi
-if [[ -n "$(git -C "$src" status --porcelain)" ]]; then
+# assume-unchanged and skip-worktree hide edits from a status listing.
+# Lowercase ls-files tags are assume-unchanged. S is skip-worktree. A fresh
+# index from read-tree does not carry those bits, so diff still sees the edit.
+worktree_dirty() {
+  local src="$1"
+  local flags index_file
+  flags="$(git -C "$src" ls-files -v)" || return 0
+  if printf '%s\n' "$flags" | awk '
+    BEGIN { found = 0 }
+    {
+      tag = substr($0, 1, 1)
+      if (tag ~ /[a-z]/ || tag == "S") found = 1
+    }
+    END { exit found ? 0 : 1 }
+  '; then
+    return 0
+  fi
+  index_file="$(mktemp)"
+  if ! GIT_INDEX_FILE="$index_file" git -C "$src" read-tree HEAD; then
+    rm -f "$index_file" || true
+    return 0
+  fi
+  if ! GIT_INDEX_FILE="$index_file" git -C "$src" diff --no-ext-diff --exit-code HEAD --; then
+    rm -f "$index_file" || true
+    return 0
+  fi
+  rm -f "$index_file" || true
+  if [[ -n "$(git -C "$src" ls-files --others --exclude-standard)" ]]; then
+    return 0
+  fi
+  return 1
+}
+if worktree_dirty "$src"; then
   echo "pe_dirty" >&2
   exit 1
 fi
@@ -61,32 +111,52 @@ esac
 case "$src" in
   "$writable"|"$writable"/*) echo "pe_target" >&2; exit 1 ;;
 esac
-# Cargo inside the container runs as root, so the target tree is root-owned.
-# A failing cleanup must not turn a built loader into a failed script.
-trap 'rm -rf "$writable" >/dev/null 2>&1 || true' EXIT
 
 docker run --rm \
   -e "HOST_UID=$(id -u)" \
   -e "HOST_GID=$(id -g)" \
+  -e "RUST_TOOLCHAIN=${RUST_TOOLCHAIN}" \
+  -e "BPF_LINKER_VERSION=${BPF_LINKER_VERSION}" \
   -v "$src:$src:ro" \
   -v "$writable:$src/target" \
   -v "$out_dir:/out" \
   -w "$src" \
   ubuntu:24.04 \
   bash -c 'set -euo pipefail
+cleanup_target() {
+  if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ]; then
+    chown -R "${HOST_UID}:${HOST_GID}" "$(pwd)/target" /out >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_target EXIT
 export DEBIAN_FRONTEND=noninteractive
+export RUSTUP_TOOLCHAIN="${RUST_TOOLCHAIN}"
 apt-get update
 apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config libssl-dev
-curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --component rust-src
+curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}" --component rust-src --profile minimal
 . "$HOME/.cargo/env"
 curl -L --proto "=https" --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-cargo binstall --no-confirm bpf-linker
+cargo binstall --no-confirm "bpf-linker@${BPF_LINKER_VERSION}"
+active="$(rustup show active-toolchain)"
+case "$active" in
+  "${RUST_TOOLCHAIN}"*) ;;
+  *) echo rust_toolchain >&2; exit 1 ;;
+esac
+linker_line="$(bpf-linker --version 2>&1 || true)"
+case "$linker_line" in
+  *"${BPF_LINKER_VERSION}"*) ;;
+  *) echo bpf_linker_version >&2; exit 1 ;;
+esac
+{
+  printf "rust_toolchain=%s\n" "$active"
+  printf "bpf_linker=%s\n" "$linker_line"
+} > /out/toolchain.txt
 export CARGO_HOME=/tmp/cargo
 export CARGO_TARGET_DIR=/tmp/target
-cargo build -p vantio-loader --release
+cargo +"${RUST_TOOLCHAIN}" build -p vantio-loader --release
 install -m 0755 /tmp/target/release/vantio-loader /out/vantio-loader
 if ldd /out/vantio-loader | grep -E "libssl|libcrypto"; then
-  echo "loader_libs" >&2
+  echo loader_libs >&2
   exit 1
 fi
 ldd /out/vantio-loader > /out/ldd.txt || true
@@ -100,4 +170,6 @@ if ! python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); d=p.read_bytes
   exit 1
 fi
 sha256sum "$out_dir/vantio-loader" | awk '{print $1}' > "$out_dir/loader.sha256"
+echo "rust_toolchain=${RUST_TOOLCHAIN}"
+echo "bpf_linker=${BPF_LINKER_VERSION}"
 echo "loader_built=1"

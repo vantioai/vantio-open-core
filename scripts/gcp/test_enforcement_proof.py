@@ -16,6 +16,7 @@ import yaml
 
 import enforcement_proof as ep
 import lab_auto
+import proof_grade as pg
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "gcp-lab-enforcement-proof.yml"
@@ -25,6 +26,49 @@ PIN = ep.PE_GIT_SHA
 GO = "zach-run-go-placeholder"
 HOST = "proof81"
 GATE = json.dumps({"expected_oop_usd": "0", "abort": False})
+BEFORE = "11111111-1111-1111-1111-111111111111"
+AFTER = "22222222-2222-2222-2222-222222222222"
+
+
+def _accepted_compare() -> str:
+    lines = [
+        "enforce_banner=ENFORCING",
+        "audit_outside=connect where=outside result=connected errno=0 elapsed_ms=2.0",
+        "audit_inside=connect where=inside result=connected errno=0 elapsed_ms=2.0",
+        "enforce_inside=connect where=inside result=timeout errno=0 elapsed_ms=1500.0",
+        "enforce_outside=connect where=outside result=connected errno=0 elapsed_ms=2.0",
+        "drop_counter=source=tcpdump inside=0 outside=2",
+        f"ledger_drop=type={pg.EXPECTED_DROP_EVENT} bytes={pg.SENT_PACKET_LENGTH} sent={pg.SENT_PACKET_LENGTH}",
+        "compare=PASS",
+        "live_enforcement=NOT_PROVEN",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _accepted_file_deny() -> str:
+    return "\n".join(
+        [
+            "file_deny=PASS",
+            "open_inside=result=error errno=13",
+            "open_outside=result=ok errno=0",
+            "file_deny_row=yes",
+        ]
+    ) + "\n"
+
+
+def _accepted_reboot() -> str:
+    return "\n".join(
+        [
+            "reboot_wiped=PASS",
+            "reboot_restored=NOT_RUN",
+            f"reboot_pre_boot_id={BEFORE}",
+            f"reboot_post_boot_id={AFTER}",
+        ]
+    ) + "\n"
+
+
+def _replace_prefix(lines: list[str], prefix: str, replacement: str) -> list[str]:
+    return [replacement if line.startswith(prefix) else line for line in lines]
 
 
 def _base_env(**extra: str) -> dict[str, str]:
@@ -146,12 +190,12 @@ class ObservationTests(unittest.TestCase):
         self.assertIsNone(ep.keep_line("compare=pass"))
         self.assertIsNone(ep.keep_line("compare=PROVEN"))
         self.assertIsNone(ep.keep_line(f"note={GO}"))
-        self.assertTrue(ep.phase_accepted("compare", ["compare=PASS"], 0))
+        self.assertFalse(ep.phase_accepted("compare", ["compare=PASS"], 0))
         self.assertFalse(ep.phase_accepted("compare", ["compare=REFUSED_LSM"], 0))
         self.assertTrue(
             ep.phase_accepted("uninstall", ["uninstall=REFUSED_NOT_ENROLLED"], 2)
         )
-        self.assertTrue(ep.phase_accepted("expired-key", ["license_exp_claim=NOT_PROVEN"], 0))
+        self.assertFalse(ep.phase_accepted("expired-key", ["license_exp_claim=NOT_PROVEN"], 0))
         self.assertFalse(
             ep.phase_accepted(
                 "expired-key",
@@ -192,7 +236,7 @@ class RunTests(unittest.TestCase):
                 self.commands: list[str] = []
                 self.files: list[str] = []
                 self.created = 0
-                self.boot = "boot-before"
+                self.boot = "11111111-1111-1111-1111-111111111111"
 
             def instances(self, _project: str) -> list[dict[str, str]]:
                 return []
@@ -211,24 +255,24 @@ class RunTests(unittest.TestCase):
                 return self.boot
 
             def wait_boot(self, _project: str, _name: str, before: str) -> str:
-                return "boot-after" if before == "boot-before" else ""
+                return "22222222-2222-2222-2222-222222222222" if before == self.boot or before == "11111111-1111-1111-1111-111111111111" else ""
 
             def ssh(self, _project: str, _name: str, command: str) -> subprocess.CompletedProcess[str]:
                 self.commands.append(command)
                 if command.startswith("sudo bash ") and "run-proof-phase.sh" in command:
                     phase = command.rsplit(" ", 1)[-1].strip("'")
                     lines = {
-                        "compare": "compare=PASS\nlive_enforcement=NOT_PROVEN\n",
-                        "file-deny": "file_deny=PASS\n",
+                        "compare": _accepted_compare(),
+                        "file-deny": _accepted_file_deny(),
                         "reboot-pre": "reboot_pre=RECORDED\n",
-                        "reboot-post": "reboot_wiped=PASS\nreboot_restored=NOT_RUN\n",
-                        "expired-key": "license_exp_claim=NOT_PROVEN\nlicense_exp_observation=NOT_CONSULTED\n",
+                        "reboot-post": _accepted_reboot(),
+                        "expired-key": "license_exp_claim=REFUSED\nlicense_exp_observation=REFUSED\n",
                         "uninstall": "uninstall=REFUSED_NOT_ENROLLED\n",
                     }
                     rc = 2 if phase == "uninstall" else 0
                     return subprocess.CompletedProcess([], rc, lines[phase], "")
                 if "systemctl reboot --force" in command:
-                    self.boot = "boot-after"
+                    self.boot = "22222222-2222-2222-2222-222222222222"
                     return subprocess.CompletedProcess([], 0, "", "")
                 return subprocess.CompletedProcess([], 1 if command.startswith("sudo cat") else 0, "", "")
 
@@ -396,7 +440,12 @@ class CreateAndBuildTests(unittest.TestCase):
             "case \"$1\" in\n"
             "  rev-parse) printf '%s\\n' \"$PE_HEAD\" ;;\n"
             "  status) ;;\n"
-            "  *) printf 'git_unexpected\\n' >&2; exit 1 ;;\n"
+            "  ls-files)\n"
+            "    if [ -n \"${PE_LS_FILES:-}\" ]; then printf '%s\\n' \"$PE_LS_FILES\"; fi\n"
+            "    ;;\n"
+            "  read-tree) ;;\n"
+            "  diff) exit \"${PE_DIFF_RC:-0}\" ;;\n"
+            "  *) printf 'git_unexpected %s\\n' \"$1\" >&2; exit 1 ;;\n"
             "esac\n",
             encoding="utf-8",
         )
@@ -808,5 +857,396 @@ class WorkflowTests(unittest.TestCase):
         )
 
 
+class FailClosedTests(unittest.TestCase):
+    def test_timeout_and_loader_row_without_a_counter_is_not_pass(self) -> None:
+        lines = [line for line in _accepted_compare().splitlines() if not line.startswith("drop_counter=")]
+        self.assertEqual(pg.compare_verdict(lines), "FAIL_UNATTRIBUTED")
+        self.assertFalse(ep.phase_accepted("compare", lines, 0))
+        lied = _replace_prefix(lines, "drop_counter=", "drop_counter=source=ndjson delta=4")
+        lied.append("drop_counter=source=ndjson delta=4")
+        self.assertNotEqual(pg.compare_verdict(lied), "PASS")
+        self.assertFalse(pg.counter_confirms_drop("drop_counter=source=loader delta=4"))
+
+    def test_any_errno_is_not_a_block_and_the_pinned_errno_is(self) -> None:
+        wrong = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_inside=",
+            "enforce_inside=connect where=inside result=error errno=111 elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(wrong), "FAIL_UNEXPECTED_ERRNO")
+        self.assertFalse(ep.phase_accepted("compare", wrong, 0))
+        pinned = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_inside=",
+            f"enforce_inside=connect where=inside result=error errno={pg.EXPECTED_BLOCK_ERRNO} elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(pinned), "PASS")
+        opened = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_inside=",
+            "enforce_inside=connect where=inside result=connected errno=0 elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(opened), "FAIL_OPEN")
+        unscoped = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_outside=",
+            "enforce_outside=connect where=outside result=timeout errno=0 elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(unscoped), "FAIL_UNSCOPED")
+        delivered = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_counter=",
+            "drop_counter=source=tcpdump inside=1 outside=2",
+        )
+        self.assertEqual(pg.compare_verdict(delivered), "FAIL_UNATTRIBUTED")
+        counted = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_counter=",
+            "drop_counter=source=nft delta=1",
+        )
+        self.assertEqual(pg.compare_verdict(counted), "PASS")
+        quiet = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_counter=",
+            "drop_counter=source=iptables delta=0",
+        )
+        self.assertNotEqual(pg.compare_verdict(quiet), "PASS")
+
+    def test_mismatched_ledger_type_and_byte_length_fail(self) -> None:
+        other = "NETWORK_BLOCK" if pg.EXPECTED_DROP_EVENT != "NETWORK_BLOCK" else "CGROUP_BLOCK"
+        rows = [{"EventType": other, "ActionTaken": "BLOCKED", "BytesSevered": pg.SENT_PACKET_LENGTH}]
+        self.assertFalse(pg.ledger_rows_ok(rows))
+        self.assertIn("type=MISMATCH", pg.ledger_line(json.dumps(rows[0])))
+        matched = {"EventType": pg.EXPECTED_DROP_EVENT, "ActionTaken": "BLOCKED", "BytesSevered": pg.SENT_PACKET_LENGTH}
+        self.assertTrue(pg.ledger_rows_ok([matched, rows[0]]))
+        mutated = dict(matched)
+        mutated["BytesSevered"] = pg.SENT_PACKET_LENGTH + 1
+        self.assertFalse(pg.ledger_rows_ok([mutated]))
+        self.assertFalse(pg.ledger_rows_ok([matched], sent_len=pg.SENT_PACKET_LENGTH + 1))
+        bad_line = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "ledger_drop=",
+            f"ledger_drop=type={other} bytes={pg.SENT_PACKET_LENGTH} sent={pg.SENT_PACKET_LENGTH}",
+        )
+        self.assertEqual(pg.compare_verdict(bad_line), "FAIL_UNATTRIBUTED")
+        self.assertEqual(pg.compare_verdict(_accepted_compare().splitlines()), "PASS")
+
+    def test_not_proven_expired_key_fails_and_a_refusal_passes(self) -> None:
+        self.assertFalse(
+            ep.phase_accepted("expired-key", ["license_exp_claim=NOT_PROVEN", "license_exp_observation=REFUSED"], 0)
+        )
+        self.assertFalse(
+            ep.phase_accepted("expired-key", ["license_exp_claim=REFUSED", "license_exp_observation=NOT_CONSULTED"], 0)
+        )
+        self.assertTrue(
+            ep.phase_accepted("expired-key", ["license_exp_claim=REFUSED", "license_exp_observation=REFUSED"], 0)
+        )
+
+    def test_file_deny_needs_eacces_inside_and_success_outside(self) -> None:
+        opened = _accepted_file_deny().replace("result=error errno=13", "result=ok errno=0").splitlines()
+        self.assertEqual(pg.file_deny_verdict(opened), "FAIL_OPEN")
+        self.assertFalse(ep.phase_accepted("file-deny", ["file_deny=PASS", *opened], 0))
+        other = _accepted_file_deny().replace("errno=13", "errno=1").splitlines()
+        self.assertNotEqual(pg.file_deny_verdict(other), "PASS")
+        self.assertEqual(pg.file_deny_verdict(_accepted_file_deny().splitlines()), "PASS")
+        mutated = _accepted_file_deny().replace("errno=13", "errno=12").splitlines()
+        self.assertNotEqual(pg.file_deny_verdict(mutated), "PASS")
+
+    def test_root_detach_and_fork_inherit_fail_closed(self) -> None:
+        wrapper = ep.wrapper_script()
+        self.assertIn("root_detach=GAP", wrapper)
+        self.assertIn("root_detach_decision=DECISION_NEEDED", wrapper)
+        self.assertIn("fork_inherit=INCONCLUSIVE", wrapper)
+        self.assertNotIn("root_detach=PASS", wrapper)
+        self.assertFalse(ep.phase_accepted("root-detach", ["root_detach=PASS", "root_detach=GAP"], 0))
+        self.assertEqual(pg.root_detach_verdict(["root_detach=PASS"]), "GAP")
+        self.assertEqual(pg.fork_inherit_verdict([]), "INCONCLUSIVE")
+        self.assertFalse(ep.phase_accepted("fork-inherit", [], 1))
+        good = [
+            "fork_parent=connect where=inside result=timeout errno=0 elapsed_ms=1.0",
+            "fork_child=connect where=inside result=timeout errno=0 elapsed_ms=1.0",
+            "fork_grandchild=connect where=inside result=timeout errno=0 elapsed_ms=1.0",
+            "fork_stranger=connect where=outside result=connected errno=0 elapsed_ms=1.0",
+            "fork_trace=parent=ab child=ab grandchild=ab",
+            "fork_anchor=parent=7 child=7 grandchild=7",
+        ]
+        self.assertEqual(pg.fork_inherit_verdict(good), "PASS")
+        self.assertTrue(ep.phase_accepted("fork-inherit", good, 0))
+        zero = _replace_prefix(good, "fork_trace=", "fork_trace=parent=0 child=0 grandchild=0")
+        self.assertEqual(pg.fork_inherit_verdict(zero), "FAIL_UNATTRIBUTED")
+        changed = _replace_prefix(good, "fork_trace=", "fork_trace=parent=ab child=cd grandchild=ab")
+        self.assertEqual(pg.fork_inherit_verdict(changed), "FAIL_UNATTRIBUTED")
+        plan = ep.public_plan("full")
+        self.assertEqual(plan["root_detach"], "DECISION_NEEDED")
+        self.assertEqual(plan["stub_phases"], ["fork-inherit", "root-detach"])
+        self.assertNotIn("fork-inherit", plan["phases"])
+        self.assertNotIn("root-detach", plan["phases"])
+
+    def test_reboot_requires_a_new_boot_id(self) -> None:
+        same = _accepted_reboot().replace(AFTER, BEFORE).splitlines()
+        self.assertFalse(ep.phase_accepted("reboot-post", same, 0))
+        self.assertTrue(ep.phase_accepted("reboot-post", _accepted_reboot().splitlines(), 0))
+        self.assertFalse(
+            ep.phase_accepted(
+                "reboot-post",
+                _accepted_reboot().splitlines(),
+                0,
+                {"before": BEFORE, "after": BEFORE},
+            )
+        )
+        missing = [line for line in _accepted_reboot().splitlines() if not line.startswith("reboot_pre_boot_id=")]
+        self.assertFalse(ep.phase_accepted("reboot-post", missing, 0))
+
+    def test_not_proven_stops_before_uninstall(self) -> None:
+        class Fake:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.boot = BEFORE
+
+            def instances(self, _project: str) -> list[dict[str, str]]:
+                return []
+
+            def create(self, _env: dict[str, str]) -> str:
+                return "vantio-gcp-lab-12"
+
+            def scp(self, _project: str, _name: str, _paths: list[Path]) -> None:
+                return None
+
+            def wait_ssh(self, _project: str, _name: str) -> str:
+                return self.boot
+
+            def boot_id(self, _project: str, _name: str) -> str:
+                return self.boot
+
+            def wait_boot(self, _project: str, _name: str, before: str) -> str:
+                return AFTER if before == BEFORE else ""
+
+            def ssh(self, _project: str, _name: str, command: str) -> subprocess.CompletedProcess[str]:
+                self.commands.append(command)
+                if "systemctl reboot --force" in command:
+                    self.boot = AFTER
+                    return subprocess.CompletedProcess([], 0, "", "")
+                phase = command.rsplit(" ", 1)[-1].strip("'")
+                if phase == "expired-key":
+                    return subprocess.CompletedProcess(
+                        [],
+                        0,
+                        "license_exp_claim=NOT_PROVEN\nlicense_exp_observation=NOT_CONSULTED\n",
+                        "",
+                    )
+                text = {
+                    "compare": _accepted_compare(),
+                    "file-deny": _accepted_file_deny(),
+                    "reboot-pre": "reboot_pre=RECORDED\n",
+                    "reboot-post": _accepted_reboot(),
+                }.get(phase, "")
+                return subprocess.CompletedProcess([], 0, text, "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            RunTests._loader(self, root / "loader")  # type: ignore[arg-type]
+            debs = root / "debs"
+            debs.mkdir()
+            (debs / "python3-cryptography_1_amd64.deb").write_bytes(b"deb")
+            fake = Fake()
+            env = _base_env(
+                GCP_LAB_EXECUTE="1",
+                GCP_LAB_GATE_JSON=GATE,
+                LOADER_DIR=str(root / "loader"),
+                DEB_DIR=str(debs),
+                EVIDENCE_DIR=str(root / "evidence"),
+                RUNNER_TEMP=str(root),
+            )
+            self.assertEqual(ep.run_proof(env, fake), 2)  # type: ignore[arg-type]
+        self.assertFalse(any(command.endswith(" uninstall") for command in fake.commands))
+
+    def test_harden_rejects_any_errno_and_not_proven(self) -> None:
+        script = (
+            "#!/bin/bash\nset -euo pipefail\n"
+            "phase_compare() {\n" + ep._OLD_COMPARE + "}\n"
+            "phase_expired_key() {\n" + ep._OLD_EXPIRED +
+            "phase_reboot_post() {\n" + ep._OLD_REBOOT + "}\n"
+        )
+        self.assertIn('result=timeout" in item or "result=error" in item', script)
+        patched = ep.harden_lab_script(script)
+        self.assertNotIn('result=timeout" in item or "result=error" in item', patched)
+        self.assertIn("proof_grade.py", patched)
+        self.assertIn("compare-verdict", patched)
+        self.assertIn("license_exp_claim=NOT_PROVEN", patched)
+        self.assertIn("exit 1", patched.split("license_exp_claim=NOT_PROVEN", 1)[1])
+        self.assertIn("reboot_pre_boot_id=", patched)
+        checked = subprocess.run(["bash", "-n"], input=patched, text=True, capture_output=True, check=False)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertEqual(ep.harden_lab_script("#!/bin/bash\nexit 0\n"), "#!/bin/bash\nexit 0\n")
+        with self.assertRaises(SystemExit):
+            ep.harden_lab_script("#!/bin/bash\nphase_compare() {\n:\n}\n")
+
+    def _git(self, repo: Path) -> dict[str, str]:
+        env = os.environ.copy()
+        env.update(
+            {
+                "GIT_AUTHOR_NAME": "Proof Test",
+                "GIT_AUTHOR_EMAIL": "proof@example.com",
+                "GIT_COMMITTER_NAME": "Proof Test",
+                "GIT_COMMITTER_EMAIL": "proof@example.com",
+            }
+        )
+        subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, env=env, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, env=env, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, env=env, capture_output=True)
+        return env
+
+    def _pinned_script(self, root: Path, head: str) -> Path:
+        script = root / "build.sh"
+        script.write_text(BUILD.read_text(encoding="utf-8").replace(PIN, head, 1), encoding="utf-8")
+        return script
+
+    def test_assume_unchanged_and_skip_worktree_are_dirty(self) -> None:
+        text = BUILD.read_text(encoding="utf-8")
+        self.assertNotIn("git status --porcelain", text)
+        self.assertLess(text.index("trap cleanup_writable EXIT"), text.index('echo "pe_git_sha"'))
+        self.assertLess(text.index("trap cleanup_target EXIT"), text.index("apt-get update"))
+        self.assertIn("RUST_TOOLCHAIN=nightly-2026-10-13", text)
+        self.assertIn("BPF_LINKER_VERSION=0.12.0", text)
+        self.assertIn("bpf-linker@${BPF_LINKER_VERSION}", text)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            CreateAndBuildTests._checkout(self, checkout)  # type: ignore[arg-type]
+            env = self._git(checkout)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=checkout, text=True, env=env).strip()
+            (checkout / "Cargo.toml").write_text("[workspace]\n# dirty\n", encoding="utf-8")
+            subprocess.run(["git", "update-index", "--assume-unchanged", "Cargo.toml"], cwd=checkout, check=True, env=env)
+            status = subprocess.check_output(["git", "status", "--porcelain"], cwd=checkout, text=True, env=env)
+            self.assertEqual(status, "")
+            bindir = root / "bin"
+            bindir.mkdir()
+            docker = bindir / "docker"
+            docker.write_text("#!/bin/sh\necho called > \"$DOCKER_LOG\"\nexit 99\n", encoding="utf-8")
+            docker.chmod(0o755)
+            run_env = {**env, "PATH": f"{bindir}:{env.get('PATH', '')}", "DOCKER_LOG": str(root / "docker.log")}
+            done = subprocess.run(
+                ["bash", str(self._pinned_script(root, head)), str(checkout), str(root / "out"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1, done.stderr)
+            self.assertIn("pe_dirty", done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            hidden = text.replace(
+                'if worktree_dirty "$src"; then\n  echo "pe_dirty" >&2\n  exit 1\nfi\n',
+                'if [[ -n "$(git -C "$src" status --porcelain)" ]]; then\n  echo "pe_dirty" >&2\n  exit 1\nfi\n',
+                1,
+            )
+            self.assertNotEqual(hidden, text)
+            (root / "status.sh").write_text(hidden.replace(PIN, head, 1), encoding="utf-8")
+            leaked = subprocess.run(
+                ["bash", str(root / "status.sh"), str(checkout), str(root / "out2"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertNotIn("pe_dirty", leaked.stderr)
+            self.assertTrue((root / "docker.log").exists())
+            no_flags = text.replace(
+                """  if printf '%s\\n' "$flags" | awk '
+    BEGIN { found = 0 }
+    {
+      tag = substr($0, 1, 1)
+      if (tag ~ /[a-z]/ || tag == "S") found = 1
+    }
+    END { exit found ? 0 : 1 }
+  '; then
+    return 0
+  fi
+""",
+                "",
+                1,
+            )
+            self.assertNotEqual(no_flags, text)
+            (root / "docker.log").unlink()
+            (root / "nofield.sh").write_text(no_flags.replace(PIN, head, 1), encoding="utf-8")
+            still = subprocess.run(
+                ["bash", str(root / "nofield.sh"), str(checkout), str(root / "out3"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertIn("pe_dirty", still.stderr)
+            self.assertFalse((root / "docker.log").exists())
+
+    def test_skip_worktree_is_dirty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            CreateAndBuildTests._checkout(self, checkout)  # type: ignore[arg-type]
+            env = self._git(checkout)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=checkout, text=True, env=env).strip()
+            (checkout / "Cargo.toml").write_text("[workspace]\n# skipped\n", encoding="utf-8")
+            subprocess.run(["git", "update-index", "--skip-worktree", "Cargo.toml"], cwd=checkout, check=True, env=env)
+            status = subprocess.check_output(["git", "status", "--porcelain"], cwd=checkout, text=True, env=env)
+            self.assertEqual(status, "")
+            flags = subprocess.check_output(["git", "ls-files", "-v", "Cargo.toml"], cwd=checkout, text=True, env=env)
+            self.assertTrue(flags.startswith("S"))
+            bindir = root / "bin"
+            bindir.mkdir()
+            docker = bindir / "docker"
+            docker.write_text("#!/bin/sh\necho called > \"$DOCKER_LOG\"\nexit 99\n", encoding="utf-8")
+            docker.chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(self._pinned_script(root, head)), str(checkout), str(root / "out"), head],
+                capture_output=True,
+                text=True,
+                env={**env, "PATH": f"{bindir}:{env.get('PATH', '')}", "DOCKER_LOG": str(root / "docker.log")},
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1, done.stderr)
+            self.assertIn("pe_dirty", done.stderr)
+
+    def test_failed_compile_chowns_and_removes_the_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            CreateAndBuildTests._checkout(self, checkout)  # type: ignore[arg-type]
+            env = CreateAndBuildTests._fake_tools(self, root, PIN)  # type: ignore[arg-type]
+            bindir = Path(env["PATH"].split(":", 1)[0])
+            (bindir / "docker").write_text(
+                "#!/bin/sh\n"
+                "for arg in \"$@\"; do\n"
+                "  case \"$arg\" in\n"
+                "    *:/target|*:*/target) host=${arg%%:*}; mkdir -p \"$host\"; echo kept > \"$host/kept\"; ;;\n"
+                "  esac\n"
+                "done\n"
+                "echo failed > \"$DOCKER_LOG\"\n"
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            chown_log = root / "chown.log"
+            (bindir / "chown").write_text(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CHOWN_LOG\"\nexit 0\n",
+                encoding="utf-8",
+            )
+            (bindir / "chown").chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env={**env, "CHOWN_LOG": str(chown_log)},
+                check=False,
+            )
+            self.assertNotEqual(done.returncode, 0)
+            self.assertNotIn("loader_built=1", done.stdout)
+            self.assertTrue(chown_log.is_file(), done.stderr)
+            recorded = chown_log.read_text(encoding="utf-8").strip().split()
+            self.assertTrue(recorded, done.stderr)
+            self.assertFalse(Path(recorded[-1]).exists(), recorded[-1])
+
+
 if __name__ == "__main__":
     unittest.main()
+
