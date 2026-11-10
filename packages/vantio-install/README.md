@@ -37,7 +37,7 @@ The installer reads only `vantio_install/trust/license-public-keys.json`. That f
 
 The row is kid `lic-live-2026-10`, algorithm `Ed25519`, mode `live`. `public_key_b64` is `l7QzrGpjE1xQZbJNBVasOSFYTJyfiZh3espcPi2YvyM=`. That is standard padded base64 of the 32 raw public-key bytes. The fingerprint is the SHA-256 of those 32 decoded raw bytes: `dbd00b512f9351781f27d11c6f80296815593c3fa6000c07e96a3b916ee666be`.
 
-The loader rejects a row that still has a `placeholder` field, and it rejects an empty `public_key_b64`. Base64url is rejected. A PEM private key is rejected. A 64-byte value is rejected. A packaged row whose mode is not `live` is refused.
+The loader rejects a row that still has a `placeholder` field, and it rejects an empty `public_key_b64`. Base64url is rejected. A PEM private key is rejected. A 64-byte value is rejected. If any packaged row is not mode `live`, the whole packaged trust is refused.
 
 From this package directory, run:
 

@@ -158,7 +158,7 @@ class LoaderTests(unittest.TestCase):
 
     def test_packaged_non_live_mode_is_refused(self) -> None:
         public_b64 = base64.b64encode(b"\x11" * 32).decode("ascii")
-        for mode in ("test", "Live", None, 1, [], {}):
+        for mode in ("test", "Live", " live", "live ", None, 1, [], {}):
             document = {
                 "keys": [
                     {
@@ -176,9 +176,54 @@ class LoaderTests(unittest.TestCase):
                     with self.assertRaises(PackagedLicenseTrustError) as caught:
                         packaged_license_keys()
                     self.assertEqual(str(caught.exception), "PACKAGED_LICENSE_MODE")
+        missing = {
+            "kid": LIVE_KID,
+            "alg": "Ed25519",
+            "public_key_b64": public_b64,
+        }
+        self.assertNotIn("mode", missing)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "license-public-keys.json"
+            path.write_text(json.dumps({"keys": [missing]}), encoding="utf-8")
+            with patch.object(license_token, "_PACKAGED", path):
+                with self.assertRaises(PackagedLicenseTrustError) as caught:
+                    packaged_license_keys()
+                self.assertEqual(str(caught.exception), "PACKAGED_LICENSE_MODE")
+        live = {
+            "kid": LIVE_KID,
+            "alg": "Ed25519",
+            "public_key_b64": public_b64,
+            "mode": "live",
+        }
+        spaced = dict(live)
+        spaced["mode"] = "live "
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "license-public-keys.json"
+            path.write_text(json.dumps({"keys": [live, spaced]}), encoding="utf-8")
+            with patch.object(license_token, "_PACKAGED", path):
+                with self.assertRaises(PackagedLicenseTrustError) as caught:
+                    packaged_license_keys()
+                self.assertEqual(str(caught.exception), "PACKAGED_LICENSE_MODE")
         loaded = packaged_license_keys()
         self.assertEqual(len(loaded), 1)
         self.assertEqual(loaded[0]["mode"], "live")
+
+    def test_packaged_non_dict_row_is_refused(self) -> None:
+        public_b64 = base64.b64encode(b"\x11" * 32).decode("ascii")
+        live = {
+            "kid": LIVE_KID,
+            "alg": "Ed25519",
+            "public_key_b64": public_b64,
+            "mode": "live",
+        }
+        for item in ("live", 1, None, []):
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "license-public-keys.json"
+                path.write_text(json.dumps({"keys": [live, item]}), encoding="utf-8")
+                with patch.object(license_token, "_PACKAGED", path):
+                    with self.assertRaises(PackagedLicenseTrustError) as caught:
+                        packaged_license_keys()
+                    self.assertEqual(str(caught.exception), "PACKAGED_LICENSE_ROW")
 
     def test_non_string_fields_are_refused(self) -> None:
         cases = (("list", []), ("dict", {}), ("number", 7), ("null", None))

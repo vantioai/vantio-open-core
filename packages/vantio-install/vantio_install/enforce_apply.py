@@ -29,8 +29,8 @@ from vantio_install.engine import (
 from vantio_install.gates import command_payload, require_live_gates
 from vantio_install.health import bpf_lsm_active, derive
 from vantio_install.host_prep import read_lsm
-from vantio_install.license_token import read_stored_license, verify_token
-from vantio_install.self_serve import load_policy_file, manifest_has_exec_deny
+from vantio_install.license_token import PackagedLicenseTrustError, read_stored_license, verify_token
+from vantio_install.self_serve import load_policy_file, manifest_has_exec_deny, refused_packaged_trust
 from vantio_install.server_root import server_root
 from vantio_install.signed_policy import verify_signed_policy
 from vantio_install.util import read_json, redact_text, sha256_file, write_json
@@ -66,7 +66,10 @@ def apply_enforce_enrolled(ctx: dict) -> tuple[int, dict]:
         if plan_reason is not None:
             return _refuse(ctx, plan_reason, "The plan hash does not match this transaction.", transaction_id=tx_id)
         root = server_root(ctx, create=True)
-        license_reason, license_fields = _license_reason(root)
+        try:
+            license_reason, license_fields = _license_reason(root)
+        except PackagedLicenseTrustError:
+            return refused_packaged_trust("apply", transaction_id=tx_id)
         if license_reason is not None:
             message = "license canceled or expired" if license_reason == "EXPIRED" else license_reason
             return _refuse(ctx, license_reason, message, transaction_id=tx_id)

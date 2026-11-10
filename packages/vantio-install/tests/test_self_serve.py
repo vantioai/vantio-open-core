@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from tests.test_stage_a import Harness
-from vantio_install import constants
+from vantio_install import constants, license_token
 from vantio_install.artifact_verify import artifact_trust_override, packaged_artifact_path_override
 from vantio_install.bundle_fetch import classify_endpoint, fetch_bundle, redirect_refusal, verify_unpacked
 from vantio_install.cli import main
@@ -602,6 +602,97 @@ class EnforceFlowTests(unittest.TestCase):
 
 def dropin_exists(root: Path) -> bool:
     return (root / constants.GRUB_DROPIN_RELATIVE).exists()
+
+
+class PackagedTrustCliTests(unittest.TestCase):
+    def _trust_file(self, root: Path, mode: str) -> Path:
+        path = root / "license-public-keys.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "keys": [
+                        {
+                            "kid": "lic-live-2026-10",
+                            "alg": "Ed25519",
+                            "public_key_b64": base64.b64encode(b"\x33" * 32).decode("ascii"),
+                            "mode": mode,
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def _run(self, argv: list[str], trust: Path) -> tuple[int, dict]:
+        buf = io.StringIO()
+        with mock.patch.dict(os.environ, {"VANTIO_INSTALL_ALLOW_LIVE": "1"}):
+            with mock.patch.object(license_token, "_PACKAGED", trust):
+                with mock.patch("sys.stdout", buf):
+                    code = main(argv)
+        return code, json.loads(buf.getvalue())
+
+    def test_fetch_cli_refuses_non_live_packaged_trust(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            trust = self._trust_file(root, "test")
+            fixture = root / "host"
+            fixture.mkdir()
+            code, body = self._run(
+                [
+                    "fetch",
+                    "--json",
+                    "--state-dir",
+                    str(root / "state"),
+                    "--fixture-host",
+                    str(fixture),
+                    "--i-accept-live-mutations",
+                    "--license",
+                    "vl1.not.a-real-token",
+                ],
+                trust,
+            )
+        self.assertEqual(code, constants.EXIT_FAILED_SAFE)
+        self.assertNotEqual(code, constants.EXIT_CRASH)
+        self.assertEqual(body["reason"], "LICENSE_TRUST_INVALID")
+        self.assertEqual(body["state"], "FAILED_SAFE")
+        self.assertEqual(body["message"], "The packaged license trust is refused.")
+        self.assertNotIn("PackagedLicenseTrustError", json.dumps(body))
+        self.assertNotIn("vl1.not.a-real-token", json.dumps(body))
+
+    def test_apply_cli_refuses_non_live_packaged_trust(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            trust = self._trust_file(root, "test")
+            fixture = root / "host"
+            fixture.mkdir()
+            state = root / "state"
+            tx = "vantio-tx-22222222-2222-4222-8222-222222222222"
+            tx_dir = state / "transactions" / tx
+            tx_dir.mkdir(parents=True)
+            (tx_dir / "TRANSACTION.json").write_text(json.dumps({"state": "HEALTHY"}), encoding="utf-8")
+            store_license("vl1.not.a-real-token", state / "server-root" / constants.LICENSE_RELATIVE)
+            code, body = self._run(
+                [
+                    "apply",
+                    "--json",
+                    "--yes",
+                    "--state-dir",
+                    str(state),
+                    "--fixture-host",
+                    str(fixture),
+                    "--i-accept-live-mutations",
+                    "--enforce-enrolled",
+                    "--transaction-id",
+                    tx,
+                ],
+                trust,
+            )
+        self.assertEqual(code, constants.EXIT_FAILED_SAFE)
+        self.assertEqual(body["reason"], "LICENSE_TRUST_INVALID")
+        self.assertEqual(body["state"], "FAILED_SAFE")
+        self.assertEqual(body["command"], "apply")
+        self.assertNotIn("PackagedLicenseTrustError", json.dumps(body))
 
 
 class HealthAgreementTests(unittest.TestCase):

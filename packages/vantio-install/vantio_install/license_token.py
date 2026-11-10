@@ -5,8 +5,9 @@ signature over the ASCII bytes ``vl1.`` + payload_b64). The signature covers
 those exact characters. The payload is not re-serialized before the check.
 
 The packaged trust file holds one live Ed25519 public key for kid
-``lic-live-2026-10``. A packaged row whose mode is not ``live`` is
-refused. ``_parse_key`` rejects any row that still has a
+``lic-live-2026-10``. If any packaged row is not mode ``live``, the
+whole packaged trust is refused. A row that is not an object is
+refused as ``PACKAGED_LICENSE_ROW``. ``_parse_key`` rejects any row that still has a
 ``placeholder`` field, and it rejects an empty ``public_key_b64``.
 A kid, algorithm, mode, or public key that is not a string is refused.
 Tests inject keys through
@@ -74,7 +75,9 @@ def packaged_license_keys() -> tuple[dict, ...]:
         return ()
     if isinstance(payload, dict) and isinstance(payload.get("keys"), list):
         for item in payload["keys"]:
-            if not isinstance(item, dict) or item.get("mode") != "live":
+            if not isinstance(item, dict):
+                raise PackagedLicenseTrustError("PACKAGED_LICENSE_ROW")
+            if item.get("mode") != "live":
                 raise PackagedLicenseTrustError("PACKAGED_LICENSE_MODE")
     try:
         return keys_from_mapping(payload)
