@@ -4,8 +4,13 @@ A token is ``vl1.`` + base64url(payload JSON) + ``.`` + base64url(Ed25519
 signature over the ASCII bytes ``vl1.`` + payload_b64). The signature covers
 those exact characters. The payload is not re-serialized before the check.
 
-The packaged trust file ships empty. Tests inject keys through
+The packaged trust file has one placeholder row for kid ``lic-live-2026-10``.
+``_parse_key`` rejects any row that still has a ``placeholder`` field, so
+that slot is not a trusted key. Tests inject keys through
 ``license_trust_override``. The command line cannot set that override.
+Nothing in this module reads an environment variable or fetches a URL.
+Two trust rows with the same kid fail closed as ``DUPLICATE_KID``.
+The first row is not used.
 The accepted token is stored at mode 0600 and is never copied into a
 health record. Health keeps sub, qty, interval, exp, and kid.
 """
@@ -120,9 +125,12 @@ def verify_token(token: str, *, keys: tuple[dict, ...] | None = None, now: int |
             body["exp"] = payload.get("exp")
         return body
     kid = payload["kid"]
-    pinned = next((item for item in trust if item["kid"] == kid), None)
-    if pinned is None:
+    matches = [item for item in trust if item["kid"] == kid]
+    if not matches:
         return _refused("UNKNOWN_KID")
+    if len(matches) != 1:
+        return _refused("DUPLICATE_KID")
+    pinned = matches[0]
     if pinned["mode"] != payload["mode"]:
         return _refused("MODE_MISMATCH")
     signed = b"vl1." + parts[1].encode("ascii")
@@ -163,6 +171,10 @@ def read_stored_license(path: Path) -> str | None:
 
 def _parse_key(item: object) -> dict | None:
     if not isinstance(item, dict):
+        return None
+    # The placeholder field is the empty live slot. Any row that still
+    # has it is refused, including one whose public_key_b64 is 32 bytes.
+    if "placeholder" in item:
         return None
     kid = item.get("kid")
     mode = item.get("mode")
