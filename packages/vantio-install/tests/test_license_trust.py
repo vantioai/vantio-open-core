@@ -16,11 +16,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
+from vantio_install import license_token
 from vantio_install.license_token import (
+    PackagedLicenseTrustError,
     issue_token,
     keys_from_mapping,
     license_trust_override,
@@ -138,6 +141,62 @@ class LoaderTests(unittest.TestCase):
         self.assertEqual(keys[0]["mode"], "live")
         self.assertEqual(keys[0]["public_key"], raw)
         self.assertEqual(hashlib.sha256(keys[0]["public_key"]).hexdigest(), LIVE_FINGERPRINT)
+
+    def test_throwaway_signature_is_rejected_for_the_packaged_key(self) -> None:
+        private = Ed25519PrivateKey.generate()
+        token = issue_token(_payload(), private)
+        refused = verify_token(token, keys=packaged_license_keys(), now=NOW)
+        self.assertEqual(refused["reason"], "BAD_SIGNATURE")
+        self.assertFalse(refused["ok"])
+
+    def test_test_mode_mismatches_the_packaged_key(self) -> None:
+        private = Ed25519PrivateKey.generate()
+        token = issue_token(_payload(mode="test"), private)
+        refused = verify_token(token, keys=packaged_license_keys(), now=NOW)
+        self.assertEqual(refused["reason"], "MODE_MISMATCH")
+        self.assertFalse(refused["ok"])
+
+    def test_packaged_non_live_mode_is_refused(self) -> None:
+        public_b64 = base64.b64encode(b"\x11" * 32).decode("ascii")
+        for mode in ("test", "Live", None, 1, [], {}):
+            document = {
+                "keys": [
+                    {
+                        "kid": LIVE_KID,
+                        "alg": "Ed25519",
+                        "public_key_b64": public_b64,
+                        "mode": mode,
+                    }
+                ]
+            }
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "license-public-keys.json"
+                path.write_text(json.dumps(document), encoding="utf-8")
+                with patch.object(license_token, "_PACKAGED", path):
+                    with self.assertRaises(PackagedLicenseTrustError) as caught:
+                        packaged_license_keys()
+                    self.assertEqual(str(caught.exception), "PACKAGED_LICENSE_MODE")
+        loaded = packaged_license_keys()
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0]["mode"], "live")
+
+    def test_non_string_fields_are_refused(self) -> None:
+        cases = (("list", []), ("dict", {}), ("number", 7), ("null", None))
+        base = {
+            "kid": LIVE_KID,
+            "alg": "Ed25519",
+            "mode": "live",
+            "public_key_b64": base64.b64encode(b"\x22" * 32).decode("ascii"),
+        }
+        for field in ("kid", "alg", "mode", "public_key_b64"):
+            for name, value in cases:
+                row = dict(base)
+                row[field] = value
+                with self.subTest(field=field, kind=name):
+                    self.assertEqual(keys_from_mapping({"keys": [row]}), ())
+                    with self.assertRaises(ValueError):
+                        with license_trust_override((row,)):
+                            pass
 
     def test_placeholder_and_empty_value_are_rejected(self) -> None:
         empty = {"kid": LIVE_KID, "alg": "Ed25519", "public_key_b64": "", "mode": "live"}

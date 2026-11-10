@@ -5,8 +5,10 @@ signature over the ASCII bytes ``vl1.`` + payload_b64). The signature covers
 those exact characters. The payload is not re-serialized before the check.
 
 The packaged trust file holds one live Ed25519 public key for kid
-``lic-live-2026-10``. ``_parse_key`` rejects any row that still has a
+``lic-live-2026-10``. A packaged row whose mode is not ``live`` is
+refused. ``_parse_key`` rejects any row that still has a
 ``placeholder`` field, and it rejects an empty ``public_key_b64``.
+A kid, algorithm, mode, or public key that is not a string is refused.
 Tests inject keys through
 ``license_trust_override``. The command line cannot set that override.
 Nothing in this module reads an environment variable or fetches a URL.
@@ -59,11 +61,23 @@ def public_license_fields(payload: dict) -> dict:
     return {key: payload[key] for key in _PUBLIC_FIELDS}
 
 
+class PackagedLicenseTrustError(Exception):
+    """The packaged license file has a row whose mode is not live."""
+
+
 def packaged_license_keys() -> tuple[dict, ...]:
     if not _PACKAGED.is_file():
         return ()
     try:
-        return keys_from_mapping(json.loads(_PACKAGED.read_text(encoding="utf-8")))
+        payload = json.loads(_PACKAGED.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return ()
+    if isinstance(payload, dict) and isinstance(payload.get("keys"), list):
+        for item in payload["keys"]:
+            if not isinstance(item, dict) or item.get("mode") != "live":
+                raise PackagedLicenseTrustError("PACKAGED_LICENSE_MODE")
+    try:
+        return keys_from_mapping(payload)
     except (OSError, ValueError, json.JSONDecodeError):
         return ()
 
@@ -179,12 +193,15 @@ def _parse_key(item: object) -> dict | None:
         return None
     kid = item.get("kid")
     mode = item.get("mode")
+    alg = item.get("alg")
     raw_b64 = item.get("public_key_b64")
-    if item.get("alg") != "Ed25519":
+    if not isinstance(alg, str) or alg != "Ed25519":
         return None
     if not isinstance(kid, str) or not kid or any(char.isspace() for char in kid):
         return None
-    if mode not in {"test", "live"} or not isinstance(raw_b64, str):
+    if not isinstance(mode, str) or mode not in {"test", "live"}:
+        return None
+    if not isinstance(raw_b64, str):
         return None
     try:
         raw = base64.b64decode(raw_b64, validate=True)
