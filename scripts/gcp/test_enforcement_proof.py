@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -1410,8 +1411,17 @@ class FailClosedTests(unittest.TestCase):
         self.assertIn("--remap-path-prefix=${checkout}=/vantio-src", text)
         self.assertIn("--remap-path-prefix=${cargo_home}=/cargo", text)
         self.assertIn("--remap-path-prefix=${sysroot}=/rustc", text)
+        self.assertIn("--remap-path-prefix=/usr=/sysroot-usr", text)
         self.assertIn("-ffile-prefix-map=${cargo_home}=/cargo", text)
-        self.assertIn('channel = "', text)
+        self.assertIn("-ffile-prefix-map=/usr=/sysroot-usr", text)
+        self.assertIn(
+            "UBUNTU_IMAGE=ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+            text,
+        )
+        self.assertIn("APT_SNAPSHOT=20261110T000000Z", text)
+        self.assertIn('build -p vantio-loader --release --locked', text)
+        self.assertNotIn('RUST_TOOLCHAIN="$file_channel"', text)
+        self.assertNotIn('RUST_TOOLCHAIN="$channel"', text)
         self.assertIn("BPF_LINKER_VERSION=0.12.0", text)
         self.assertIn("bpf-linker@${BPF_LINKER_VERSION}", text)
         with tempfile.TemporaryDirectory() as tmp:
@@ -1483,6 +1493,88 @@ class FailClosedTests(unittest.TestCase):
             )
             self.assertIn("pe_dirty", still.stderr)
             self.assertFalse((root / "docker.log").exists())
+
+    def test_checkout_channel_does_not_select_the_compiler(self) -> None:
+        text = BUILD.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r"UBUNTU_IMAGE=ubuntu:24\.04@sha256:[0-9a-f]{64}",
+        )
+        floating = text.replace(
+            "UBUNTU_IMAGE=ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
+            "UBUNTU_IMAGE=ubuntu:24.04",
+            1,
+        )
+        self.assertNotEqual(floating, text)
+        self.assertIsNone(re.search(r"UBUNTU_IMAGE=ubuntu:24\.04@sha256:[0-9a-f]{64}", floating))
+        stripped = text.replace("--remap-path-prefix=/usr=/sysroot-usr", "", 1)
+        self.assertNotEqual(stripped, text)
+        self.assertLess(
+            stripped.count("--remap-path-prefix=/usr=/sysroot-usr"),
+            text.count("--remap-path-prefix=/usr=/sysroot-usr"),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            CreateAndBuildTests._checkout(self, checkout)  # type: ignore[arg-type]
+            (checkout / "rust-toolchain.toml").write_text(
+                '[toolchain]\nchannel = "nightly-2026-11-05"\n',
+                encoding="utf-8",
+            )
+            env = self._git(checkout)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=checkout, text=True, env=env).strip()
+            bindir = root / "bin"
+            bindir.mkdir()
+            docker = bindir / "docker"
+            docker.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$DOCKER_LOG\"\n"
+                "out_host=\n"
+                "for arg in \"$@\"; do\n"
+                "  case \"$arg\" in\n"
+                "    *:/out) out_host=${arg%:/out} ;;\n"
+                "  esac\n"
+                "done\n"
+                "if [ -n \"$out_host\" ]; then\n"
+                "  mkdir -p \"$out_host\"\n"
+                "  printf '\\177ELF' > \"$out_host/vantio-loader\"\n"
+                "  printf 'libc.so.6\\n' > \"$out_host/ldd.txt\"\n"
+                "fi\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            docker.chmod(0o755)
+            run_env = {**env, "PATH": f"{bindir}:{env.get('PATH', '')}", "DOCKER_LOG": str(root / "docker.log")}
+            done = subprocess.run(
+                ["bash", str(self._pinned_script(root, head)), str(checkout), str(root / "out"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            self.assertIn("RUST_TOOLCHAIN=nightly-2026-10-13", args)
+            self.assertNotIn("RUST_TOOLCHAIN=nightly-2026-11-05", args)
+            self.assertIn("APT_SNAPSHOT=20261110T000000Z", args)
+            mutated = text.replace(
+                'echo "rust_toolchain_file=${file_channel}"\n',
+                'echo "rust_toolchain_file=${file_channel}"\nRUST_TOOLCHAIN="$file_channel"\n',
+                1,
+            )
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            _stage_build(script, mutated, head)
+            leaked = subprocess.run(
+                ["bash", str(script), str(checkout), str(root / "out2"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertEqual(leaked.returncode, 0, leaked.stderr)
+            leaked_args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            self.assertIn("RUST_TOOLCHAIN=nightly-2026-11-05", leaked_args)
 
     def test_skip_worktree_is_dirty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1575,6 +1667,16 @@ class ProbeContractTests(unittest.TestCase):
         self.assertIn("seq 1 50", text)
         inbound = text.split("inbound)", 1)[1].split("bpffs-overmount)", 1)[0]
         self.assertLess(inbound.index('print("inbound_enrolled="'), inbound.index("os.wait()"))
+        k8s = text.split("k8s)", 1)[1].split("vlan)", 1)[0]
+        self.assertIn("k8s_enrolled=", k8s)
+        self.assertIn("k8s_outsider=", k8s)
+        vlan = text.split("vlan)", 1)[1].split("host-enroll)", 1)[0]
+        self.assertIn("type dummy", vlan)
+        self.assertIn("type vlan id 10", vlan)
+        self.assertIn("vlan_attached=yes", vlan)
+        self.assertNotIn("link lo", vlan)
+        host_enroll = text.split("host-enroll)", 1)[1].split("pin-absent)", 1)[0]
+        self.assertIn("same-boundary", host_enroll)
 
 
 if __name__ == "__main__":

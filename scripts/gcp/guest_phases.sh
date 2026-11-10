@@ -102,26 +102,217 @@ arm_loader() {
 
 case "$phase" in
   k8s)
-    note "k8s=NOT_RUN"
+    kctl=""
+    if command -v k3s >/dev/null 2>&1; then
+      kctl="k3s kubectl"
+    elif command -v kubectl >/dev/null 2>&1; then
+      kctl="kubectl"
+    elif command -v kind >/dev/null 2>&1; then
+      kctl="kubectl"
+    fi
+    if [[ -z "$kctl" ]] || ! $kctl get nodes >/dev/null 2>&1; then
+      note "k8s=NOT_RUN"
+      finish_not_proven
+      exit 0
+    fi
+    $kctl delete pod vantio-lab-probe --force --grace-period=0 >/dev/null 2>&1 || true
+    if ! $kctl run vantio-lab-probe --image=busybox:1.36 --restart=Never --overrides='{"spec":{"hostNetwork":true,"tolerations":[{"operator":"Exists"}]}}' --command -- sleep 600 >/dev/null 2>&1; then
+      note "k8s=NOT_RUN"
+      finish_not_proven
+      exit 0
+    fi
+    pod_cgroup=""
+    runtime_pid=""
+    if command -v k3s >/dev/null 2>&1; then
+      for _ in $(seq 1 60); do
+        cid="$(k3s crictl ps --name vantio-lab-probe -q 2>/dev/null | head -n 1 || true)"
+        if [[ -n "$cid" ]]; then
+          runtime_pid="$(k3s crictl inspect "$cid" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("info",{}).get("pid",""))' || true)"
+          if [[ -n "$runtime_pid" ]]; then
+            break
+          fi
+        fi
+        sleep 1
+      done
+    fi
+    if [[ -n "$runtime_pid" && -r "/proc/${runtime_pid}/cgroup" ]]; then
+      pod_cgroup="$(python3 - "$runtime_pid" <<'PY'
+import sys
+pid = sys.argv[1]
+text = open(f"/proc/{pid}/cgroup", encoding="utf-8", errors="replace").read()
+path = ""
+for line in text.splitlines():
+    parts = line.split(":", 2)
+    if len(parts) == 3 and parts[2].startswith("/"):
+        path = parts[2]
+print("/sys/fs/cgroup" + path if path else "")
+PY
+)"
+    fi
+    if [[ -z "$pod_cgroup" || ! -d "$pod_cgroup" ]] && command -v k3s >/dev/null 2>&1; then
+      cid="$(k3s crictl ps -q 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$cid" ]]; then
+        runtime_pid="$(k3s crictl inspect "$cid" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("info",{}).get("pid",""))' || true)"
+        if [[ -n "$runtime_pid" && -r "/proc/${runtime_pid}/cgroup" ]]; then
+          pod_cgroup="$(python3 - "$runtime_pid" <<'PY'
+import sys
+pid = sys.argv[1]
+text = open(f"/proc/{pid}/cgroup", encoding="utf-8", errors="replace").read()
+path = ""
+for line in text.splitlines():
+    parts = line.split(":", 2)
+    if len(parts) == 3 and parts[2].startswith("/"):
+        path = parts[2]
+print("/sys/fs/cgroup" + path if path else "")
+PY
+)"
+        fi
+      fi
+    fi
+    if [[ -z "$pod_cgroup" || ! -d "$pod_cgroup" ]]; then
+      $kctl delete pod vantio-lab-probe --force --grace-period=0 >/dev/null 2>&1 || true
+      note "k8s=NOT_RUN"
+      finish_not_proven
+      exit 0
+    fi
+    python3 - <<'PY' >/dev/null 2>&1 &
+import socket
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", 19211)); s.listen(8)
+while True:
+    c, _ = s.accept(); c.close()
+PY
+    listener_pid=$!
+    arm_loader "$OUT/k8s.log" \
+      env VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface lo \
+      --startup-enroll-cgroup "$pod_cgroup" --output-file "$OUT/k8s.ndjson"
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$pod_cgroup" <<'PY'
+import os, socket, sys
+cgroup = sys.argv[1]
+def once(enrolled, label):
+    if os.fork() != 0:
+        os.wait()
+        return
+    if enrolled:
+        open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+    sock = socket.socket()
+    sock.settimeout(1.5)
+    try:
+        sock.connect(("127.0.0.1", 19211))
+        print(label + "connected")
+    except socket.timeout:
+        print(label + "blocked")
+    except OSError as exc:
+        print(label + ("blocked" if exc.errno in (1, 13) else "connected"))
+    raise SystemExit(0)
+once(True, "k8s_enrolled=")
+once(False, "k8s_outsider=")
+PY
+)
+    kill "$listener_pid" >/dev/null 2>&1 || true
+    wait "$listener_pid" 2>/dev/null || true
+    stop_loader
+    $kctl delete pod vantio-lab-probe --force --grace-period=0 >/dev/null 2>&1 || true
     finish_not_proven
-    exit 0
+    grep -q '^k8s_enrolled=blocked$' "$OUT/transcript.txt" \
+      && grep -q '^k8s_outsider=connected$' "$OUT/transcript.txt"
+    exit $?
     ;;
   vlan)
-    if ! ip link add link lo name vantio-vlan-probe type vlan id 10 >/tmp/vantio-vlan-probe.err 2>&1; then
-      ip link del vantio-vlan-probe >/dev/null 2>&1 || true
+    modprobe dummy >/dev/null 2>&1 || true
+    modprobe 8021q >/dev/null 2>&1 || true
+    ip link del d0 >/dev/null 2>&1 || true
+    ip link del vl0 >/dev/null 2>&1 || true
+    if ! ip link add d0 type dummy >/tmp/vantio-vlan-probe.err 2>&1 \
+      || ! ip link add link d0 name d0.10 type vlan id 10 >>/tmp/vantio-vlan-probe.err 2>&1; then
+      ip link del d0 >/dev/null 2>&1 || true
       note "vlan=NOT_RUN"
       finish_not_proven
       exit 0
     fi
-    ip link del vantio-vlan-probe >/dev/null 2>&1 || true
-    note "vlan=NOT_RUN"
+    ip link del d0 >/dev/null 2>&1 || true
+    if ! ip link add vl0 type veth peer name vl1 >/tmp/vantio-vlan-probe.err 2>&1; then
+      note "vlan=NOT_RUN"
+      finish_not_proven
+      exit 0
+    fi
+    if ! ip link add link vl0 name vl0.10 type vlan id 10 >>/tmp/vantio-vlan-probe.err 2>&1 \
+      || ! ip link add link vl1 name vl1.10 type vlan id 10 >>/tmp/vantio-vlan-probe.err 2>&1; then
+      ip link del vl0 >/dev/null 2>&1 || true
+      note "vlan=NOT_RUN"
+      finish_not_proven
+      exit 0
+    fi
+    ip link set vl0 up
+    ip link set vl1 up
+    ip link set vl0.10 up
+    ip link set vl1.10 up
+    ip addr add 192.0.2.20/24 dev vl0.10
+    ip addr add 192.0.2.21/24 dev vl1.10
+    note "vlan_attached=yes"
+    mkdir -p "$CGROUP"
+    python3 - <<'PY' >/dev/null 2>&1 &
+import socket
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("192.0.2.21", 19210)); s.listen(8)
+while True:
+    c, _ = s.accept(); c.close()
+PY
+    listener_pid=$!
+    arm_loader "$OUT/vlan.log" \
+      env VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface vl0.10 \
+      --startup-enroll-cgroup "$CGROUP" --output-file "$OUT/vlan.ndjson"
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$CGROUP" <<'PY'
+import os, socket, sys
+cgroup = sys.argv[1]
+def once(enrolled, label):
+    if os.fork() != 0:
+        os.wait()
+        return
+    if enrolled:
+        open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+    sock = socket.socket()
+    sock.settimeout(1.5)
+    try:
+        sock.connect(("192.0.2.21", 19210))
+        print(label + "allowed")
+    except socket.timeout:
+        print(label + "denied")
+    except OSError as exc:
+        print(label + ("denied" if exc.errno in (1, 13) else "allowed"))
+    raise SystemExit(0)
+once(True, "vlan_enrolled=")
+once(False, "vlan_outside=")
+PY
+)
+    kill "$listener_pid" >/dev/null 2>&1 || true
+    wait "$listener_pid" 2>/dev/null || true
+    stop_loader
+    ip link del vl0 >/dev/null 2>&1 || true
     finish_not_proven
-    exit 0
+    grep -q '^vlan_attached=yes$' "$OUT/transcript.txt" \
+      && grep -q '^vlan_enrolled=denied$' "$OUT/transcript.txt" \
+      && grep -q '^vlan_outside=allowed$' "$OUT/transcript.txt"
+    exit $?
     ;;
   host-enroll)
-    note "host_enroll=NOT_RUN"
-    finish_not_proven
-    exit 0
+    lab="$(cd "$(dirname "$0")" && pwd)/enforcement_proof_lab.sh"
+    if [[ ! -f "$lab" ]]; then
+      note "host_enroll=NOT_RUN"
+      finish_not_proven
+      exit 0
+    fi
+    set +e
+    bash "$lab" --i-understand-this-attaches-ebpf same-boundary
+    rc=$?
+    set -e
+    exit "$rc"
     ;;
   pin-absent)
     mkdir -p "$CGROUP"

@@ -1,16 +1,17 @@
 #!/bin/bash
 # Build vantio-loader from the pinned Phantom Engine commit.
 # This does not run scripts/enforcement_proof_lab.sh. bash -n does not attach a program.
-# The guest is an e2-micro. The compile runs in an ubuntu:24.04 container so the
-# binary matches that guest's glibc. The git tip is not a seal digest.
+# The guest is an e2-micro. The compile runs in a digest-pinned ubuntu:24.04
+# container so the binary matches that guest's glibc. The git tip is not a seal digest.
 #
-# bpf-linker stays at 0.12.0. A dated channel in rust-toolchain.toml is the
-# Rust pin. A missing file or a floating channel named only "nightly" keeps
-# nightly-2026-10-13. SOURCE_DATE_EPOCH=0 and the three --remap-path-prefix
-# flags match vantio-loader/build.rs: the checkout becomes /vantio-src, the
-# cargo home becomes /cargo, and the rustc sysroot becomes /rustc.
-# CFLAGS uses -ffile-prefix-map for the same three paths. ring's C files
-# do not see RUSTFLAGS.
+# bpf-linker stays at 0.12.0. Rust stays nightly-2026-10-13. A dated channel
+# in rust-toolchain.toml is recorded and not used. Apt packages come from
+# Ubuntu snapshot 20261110T000000Z. SOURCE_DATE_EPOCH=0. --remap-path-prefix
+# and -ffile-prefix-map rewrite the checkout (/vantio-src), the cargo home
+# (/cargo), the rustc sysroot (/rustc), and the host prefixes /usr, /lib,
+# /opt, /tmp, and /root. vantio-loader/build.rs replaces RUSTFLAGS for the
+# eBPF crate and only remaps the first three, so the container wraps rustc
+# and appends the host prefixes. That is what keeps .BTF strings off this machine.
 set -euo pipefail
 
 root=${1:?}
@@ -23,6 +24,8 @@ pin_file="${BASH_SOURCE[0]%/*}/pe-pin.txt"
 expected="$(tr -d '[:space:]' < "$pin_file")"
 RUST_TOOLCHAIN=nightly-2026-10-13
 BPF_LINKER_VERSION=0.12.0
+UBUNTU_IMAGE=ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+APT_SNAPSHOT=20261110T000000Z
 
 writable=""
 cleanup_writable() {
@@ -102,11 +105,9 @@ if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 && worktree_dir
 fi
 test -f "$src/Cargo.toml"
 test -f "$src/rust-toolchain.toml"
-# A pin looks like: channel = "nightly-YYYY-MM-DD"
-channel="$(awk -F'"' '/^[[:space:]]*channel[[:space:]]*=/ { print $2; exit }' "$src/rust-toolchain.toml")"
-case "$channel" in
-  nightly-20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]) RUST_TOOLCHAIN="$channel" ;;
-esac
+# The checkout channel is logged. It does not select the compiler.
+file_channel="$(awk -F'"' '/^[[:space:]]*channel[[:space:]]*=/ { print $2; exit }' "$src/rust-toolchain.toml")"
+echo "rust_toolchain_file=${file_channel}"
 test -f "$src/vantio-loader/src/main.rs"
 test -f "$src/scripts/enforcement_proof_lab.sh"
 mkdir -p "$out"
@@ -132,16 +133,23 @@ case "$src" in
   "$writable"|"$writable"/*) echo "pe_target" >&2; exit 1 ;;
 esac
 
+cache_args=()
+if [[ -n "${PE_BUILD_CACHE:-}" ]]; then
+  mkdir -p "${PE_BUILD_CACHE}/rustup" "${PE_BUILD_CACHE}/cargo"
+  cache_args+=(-v "${PE_BUILD_CACHE}/rustup:/root/.rustup" -v "${PE_BUILD_CACHE}/cargo:/root/.cargo")
+fi
 docker run --rm \
+  "${cache_args[@]}" \
   -e "HOST_UID=$(id -u)" \
   -e "HOST_GID=$(id -g)" \
   -e "RUST_TOOLCHAIN=${RUST_TOOLCHAIN}" \
   -e "BPF_LINKER_VERSION=${BPF_LINKER_VERSION}" \
+  -e "APT_SNAPSHOT=${APT_SNAPSHOT}" \
   -v "$src:$src:ro" \
   -v "$writable:$src/target" \
   -v "$out_dir:/out" \
   -w "$src" \
-  ubuntu:24.04 \
+  "$UBUNTU_IMAGE" \
   bash -c 'set -euo pipefail
 cleanup_target() {
   if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ]; then
@@ -151,8 +159,17 @@ cleanup_target() {
 trap cleanup_target EXIT
 export DEBIAN_FRONTEND=noninteractive
 export RUSTUP_TOOLCHAIN="${RUST_TOOLCHAIN}"
+export CARGO_INCREMENTAL=0
 apt-get update
-apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config libssl-dev
+apt-get install -y --no-install-recommends ca-certificates
+rm -f /etc/apt/sources.list.d/*
+printf "%s\n" \
+  "deb https://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT} noble main universe restricted multiverse" \
+  "deb https://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT} noble-updates main universe restricted multiverse" \
+  "deb https://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT} noble-security main universe restricted multiverse" \
+  > /etc/apt/sources.list
+apt-get update
+apt-get install -y --no-install-recommends build-essential curl pkg-config libssl-dev
 curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}" --component rust-src --profile minimal
 . "$HOME/.cargo/env"
 curl -L --proto "=https" --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
@@ -181,19 +198,42 @@ esac
 {
   printf "rust_toolchain=%s\n" "$active"
   printf "bpf_linker=%s\n" "$linker_line"
+  printf "apt_snapshot=%s\n" "${APT_SNAPSHOT}"
 } > /out/toolchain.txt
 export CARGO_HOME=/tmp/cargo
 export CARGO_TARGET_DIR="$(pwd)/target"
 export SOURCE_DATE_EPOCH=0
-sysroot="$(rustc --print sysroot)"
+sysroot="$(rustc +"${RUST_TOOLCHAIN}" --print sysroot)"
+# build.rs sets RUSTFLAGS itself and drops the host prefixes. The wrapper
+# appends them on every compile, including the eBPF crate that emits .BTF.
+# A cached toolchain must not wrap the wrapper. That loop never returns.
+if grep -q vantio-rustc-wrapper "${sysroot}/bin/rustc.real" 2>/dev/null; then
+  rustup toolchain uninstall "${RUST_TOOLCHAIN}"
+  rustup toolchain install "${RUST_TOOLCHAIN}" --component rust-src --profile minimal
+  sysroot="$(rustc +"${RUST_TOOLCHAIN}" --print sysroot)"
+fi
+if [ ! -e "${sysroot}/bin/rustc.real" ]; then
+  mv "${sysroot}/bin/rustc" "${sysroot}/bin/rustc.real"
+fi
+{
+  echo "#!/bin/bash"
+  echo "# vantio-rustc-wrapper"
+  echo "set -euo pipefail"
+  echo "real=\"\$(dirname \"\$0\")/rustc.real\""
+  echo "case \"\${1:-}\" in"
+  echo "  --version|-vV|--print) exec \"\$real\" \"\$@\" ;;"
+  echo "esac"
+  echo "exec \"\$real\" \"\$@\" --remap-path-prefix=/usr=/sysroot-usr --remap-path-prefix=/lib=/sysroot-lib --remap-path-prefix=/opt=/sysroot-opt --remap-path-prefix=/tmp=/build-tmp --remap-path-prefix=/root=/home-root"
+} > "${sysroot}/bin/rustc"
+chmod 0755 "${sysroot}/bin/rustc"
 cargo_home="${CARGO_HOME}"
 checkout="$(pwd)"
-remap="--remap-path-prefix=${checkout}=/vantio-src --remap-path-prefix=${cargo_home}=/cargo --remap-path-prefix=${sysroot}=/rustc"
+remap="--remap-path-prefix=${checkout}=/vantio-src --remap-path-prefix=${cargo_home}=/cargo --remap-path-prefix=${sysroot}=/rustc --remap-path-prefix=/usr=/sysroot-usr --remap-path-prefix=/lib=/sysroot-lib --remap-path-prefix=/opt=/sysroot-opt --remap-path-prefix=/tmp=/build-tmp --remap-path-prefix=/root=/home-root"
 export RUSTFLAGS="${remap}"
 # ring compiles C and assembly. RUSTFLAGS do not rewrite those .file paths.
-export CFLAGS="-ffile-prefix-map=${checkout}=/vantio-src -ffile-prefix-map=${cargo_home}=/cargo -ffile-prefix-map=${sysroot}=/rustc"
+export CFLAGS="-ffile-prefix-map=${checkout}=/vantio-src -ffile-prefix-map=${cargo_home}=/cargo -ffile-prefix-map=${sysroot}=/rustc -ffile-prefix-map=/usr=/sysroot-usr -ffile-prefix-map=/lib=/sysroot-lib -ffile-prefix-map=/opt=/sysroot-opt -ffile-prefix-map=/tmp=/build-tmp -ffile-prefix-map=/root=/home-root -fdebug-prefix-map=/usr=/sysroot-usr -fmacro-prefix-map=/usr=/sysroot-usr -frandom-seed=vantio-loader"
 export CXXFLAGS="${CFLAGS}"
-cargo +"${RUST_TOOLCHAIN}" build -p vantio-loader --release
+cargo +"${RUST_TOOLCHAIN}" build -p vantio-loader --release --locked
 install -m 0755 "$(pwd)/target/release/vantio-loader" /out/vantio-loader
 ebpf="$(pwd)/target/bpfel-unknown-none/release/vantio-phantom-engine"
 if [ -f "$ebpf" ]; then

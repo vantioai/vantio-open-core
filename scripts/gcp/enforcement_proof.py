@@ -1447,6 +1447,11 @@ PY
   trap 'date -u -s "$saved" >/dev/null 2>&1 || true' RETURN
   note "clock_moved=yes"
   note "clock_exp_passed=yes"
+  if ! prepare_net; then
+    note "clock_enforcement=open"
+    finish_not_proven
+    exit 1
+  fi
   start_loader "$OUT/clock.log" env VANTIO_LAB_SCOPE=lab-nonprod \
     VANTIO_LAB_DEV_TRUST="$OUT/clock/trust.json" VANTIO_POLICY_PATH="$OUT/clock/policy.json" \
     "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface "$IFACE" \
