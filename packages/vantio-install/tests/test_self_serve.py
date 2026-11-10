@@ -638,7 +638,10 @@ class PackagedTrustCliTests(unittest.TestCase):
             trust = self._trust_file(root, "test")
             fixture = root / "host"
             fixture.mkdir()
+            bundle = root / "bundle"
+            bundle.mkdir()
             state = root / "state"
+            server_root = state / "server-root"
             tx = "vantio-tx-33333333-3333-4333-8333-333333333333"
             code, body = self._run(
                 [
@@ -651,12 +654,15 @@ class PackagedTrustCliTests(unittest.TestCase):
                     "--i-accept-live-mutations",
                     "--transaction-id",
                     tx,
+                    "--bundle-dir",
+                    str(bundle),
                     "--license",
                     "vl1.not.a-real-token",
                 ],
                 trust,
             )
-            license_path = state / "server-root" / "etc" / "vantio" / "license"
+            license_path = server_root / constants.LICENSE_RELATIVE
+            self.assertFalse(server_root.exists())
             self.assertFalse(license_path.exists())
         self.assertEqual(code, constants.EXIT_FAILED_SAFE)
         self.assertNotEqual(code, constants.EXIT_CRASH)
