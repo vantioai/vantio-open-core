@@ -381,6 +381,10 @@ def run(rows, head_text, path):
     else:
         with open(head_path, "w", encoding="utf-8") as handle:
             handle.write(head_text)
+    trust_src = src + ".head.trust"
+    if os.path.isfile(trust_src):
+        with open(path + ".trust", "w", encoding="utf-8") as handle:
+            handle.write(open(trust_src, encoding="utf-8").read())
     done = subprocess.run([sys.executable, verify, path], capture_output=True, text=True)
     return done.returncode, (done.stderr or "") + (done.stdout or "")
 genuine = subprocess.run([sys.executable, verify, src], capture_output=True, text=True)
@@ -414,7 +418,7 @@ attacker["chain_hash"] = digest.hex()
 attacker["chain_sig"] = base64.b64encode(signing.sign(digest)).decode()
 attacker["chain_key"] = pub
 rc, text = run([attacker], None, src + ".attacker")
-print("ledger_attacker=" + ("rejected" if rc != 0 and "head missing" in text else "accepted"))
+print("ledger_attacker=" + ("rejected" if rc != 0 and "not the trusted key" in text else "accepted"))
 PY
 )
     finish_not_proven

@@ -1340,10 +1340,20 @@ phase_oom() {
   verdict="$(python3 "$grade_py" gate oom "$OUT/transcript.txt" 0)"
   note "$verdict"
   if [[ -n "${VANTIO_LAB_STOP_TOKEN:-}" ]]; then
+    local oom_token="$VANTIO_LAB_STOP_TOKEN"
+    local oom_dir oom_py
+    oom_dir="$(dirname "$VANTIO_LAB_STOP_TOKEN")"
+    oom_py="$(cd "$(dirname "$0")" && pwd)/lab_stop.py"
+    if [[ -f "$oom_py" ]]; then
+      python3 "$oom_py" next-stop "$oom_dir" >/dev/null 2>&1 || true
+      if [[ -f "$oom_dir/stop-next.json" ]]; then
+        oom_token="$oom_dir/stop-next.json"
+      fi
+    fi
     env VANTIO_LAB_SCOPE=lab-nonprod VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
-      "$LOADER" --authenticated-stop --stop-token "$VANTIO_LAB_STOP_TOKEN" >"$OUT/oom-stop.log" 2>&1 || true
+      "$LOADER" --authenticated-stop --stop-token "$oom_token" >"$OUT/oom-stop.log" 2>&1 || true
   fi
-  rm -f /run/vantio-oom-go
+  rm -f /run/vantio-oom-go || true
   finish_not_proven
   if [[ "$verdict" != "harness_accept=yes" ]]; then
     exit 1

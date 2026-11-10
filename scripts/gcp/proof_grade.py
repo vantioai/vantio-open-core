@@ -15,8 +15,10 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-# Pinned to Phantom Engine 48c95504. A cgroup_skb drop and a TC drop both
-# write NETWORK_BLOCK. DropPath names which hook. A CGROUP_BLOCK row does not pass.
+# Pinned to Phantom Engine bf98115d. The cgroup_skb program records
+# EVENT_KIND_CGROUP_BLOCK. The loader writes that row as EventType
+# NETWORK_BLOCK with DropPath cgroup_skb. BytesSevered is the full skb
+# length. A row whose EventType is CGROUP_BLOCK does not pass.
 EXPECTED_DROP_EVENT = "NETWORK_BLOCK"
 EXPECTED_DROP_PATH = "cgroup_skb"
 IPV4_HEADER_LEN = 20

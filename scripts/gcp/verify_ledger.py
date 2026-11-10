@@ -21,7 +21,23 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
+def trusted_key(path):
+    if len(sys.argv) >= 4 and sys.argv[1] == "--trust-b64":
+        return base64.b64decode(sys.argv[2])
+    for candidate in (path + ".head.trust", path + ".trust", "/run/vantio-ledger-trust"):
+        try:
+            raw = open(candidate, encoding="utf-8").read().strip()
+        except OSError:
+            continue
+        if raw:
+            return base64.b64decode(raw)
+    raise SystemExit(
+        "ledger trust key missing. Pass --trust-b64 or the loader's vantio-ledger-trust file."
+    )
+
+
 def check(path):
+    trust = trusted_key(path)
     prev = bytes(32)
     key = None
     rows = 0
@@ -48,6 +64,10 @@ def check(path):
             if key is None:
                 if got_prev != bytes(32):
                     raise SystemExit(f"row {number}: chain does not start at a zero checkpoint")
+                if pub != trust:
+                    raise SystemExit(
+                        f"row {number}: chain key is not the trusted key anchored outside the ledger"
+                    )
                 key = Ed25519PublicKey.from_public_bytes(pub)
             elif got_prev == bytes(32):
                 raise SystemExit(f"row {number}: zero chain_prev is only valid on the genesis row")
@@ -146,6 +166,8 @@ def self_test():
                 handle.write(json.dumps(head_doc))
 
     write(good, head)
+    with open(path + ".trust", "w", encoding="utf-8") as handle:
+        handle.write(good[0]["chain_key"])
     check(path)
     mutated = json.loads(json.dumps(good))
     mutated[1]["n"] = 9
@@ -186,22 +208,33 @@ def self_test():
             raise
     else:
         raise SystemExit("truncated chain was accepted")
-    attacker, _ = stamp_chain(other, [{"attacker": 1}])
-    write(attacker, None)
+    attacker, attacker_head = stamp_chain(other, [{"attacker": 1}])
+    write(attacker, attacker_head)
     try:
         check(path)
     except SystemExit as exc:
-        if "head missing" not in str(exc):
+        if "not the trusted key" not in str(exc):
             raise
     else:
         raise SystemExit("attacker-only row was accepted")
+    resigned, resigned_head = stamp_chain(other, [{"n": 1}, {"n": 2}])
+    write(resigned, resigned_head)
+    try:
+        check(path)
+    except SystemExit as exc:
+        if "not the trusted key" not in str(exc):
+            raise
+    else:
+        raise SystemExit("a ledger re-signed under a new key was accepted")
     print("ledger-self-test-ok")
 
 
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "--self-test":
         self_test()
+    elif len(sys.argv) == 4 and sys.argv[1] == "--trust-b64":
+        check(sys.argv[3])
     elif len(sys.argv) == 2:
         check(sys.argv[1])
     else:
-        raise SystemExit("usage: verify_ledger.py <file.ndjson>")
+        raise SystemExit("usage: verify_ledger.py [--trust-b64 KEY] <file.ndjson>")
