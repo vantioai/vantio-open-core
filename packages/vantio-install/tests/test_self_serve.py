@@ -638,24 +638,31 @@ class PackagedTrustCliTests(unittest.TestCase):
             trust = self._trust_file(root, "test")
             fixture = root / "host"
             fixture.mkdir()
+            state = root / "state"
+            tx = "vantio-tx-33333333-3333-4333-8333-333333333333"
             code, body = self._run(
                 [
                     "fetch",
                     "--json",
                     "--state-dir",
-                    str(root / "state"),
+                    str(state),
                     "--fixture-host",
                     str(fixture),
                     "--i-accept-live-mutations",
+                    "--transaction-id",
+                    tx,
                     "--license",
                     "vl1.not.a-real-token",
                 ],
                 trust,
             )
+            license_path = state / "server-root" / "etc" / "vantio" / "license"
+            self.assertFalse(license_path.exists())
         self.assertEqual(code, constants.EXIT_FAILED_SAFE)
         self.assertNotEqual(code, constants.EXIT_CRASH)
         self.assertEqual(body["reason"], "LICENSE_TRUST_INVALID")
         self.assertEqual(body["state"], "FAILED_SAFE")
+        self.assertEqual(body["transaction_id"], tx)
         self.assertEqual(body["message"], "The packaged license trust is refused.")
         self.assertNotIn("PackagedLicenseTrustError", json.dumps(body))
         self.assertNotIn("vl1.not.a-real-token", json.dumps(body))
@@ -670,7 +677,9 @@ class PackagedTrustCliTests(unittest.TestCase):
             tx = "vantio-tx-22222222-2222-4222-8222-222222222222"
             tx_dir = state / "transactions" / tx
             tx_dir.mkdir(parents=True)
-            (tx_dir / "TRANSACTION.json").write_text(json.dumps({"state": "HEALTHY"}), encoding="utf-8")
+            tx_file = tx_dir / "TRANSACTION.json"
+            tx_file.write_text(json.dumps({"state": "HEALTHY"}), encoding="utf-8")
+            before_tx = tx_file.read_bytes()
             store_license("vl1.not.a-real-token", state / "server-root" / constants.LICENSE_RELATIVE)
             code, body = self._run(
                 [
@@ -688,6 +697,8 @@ class PackagedTrustCliTests(unittest.TestCase):
                 ],
                 trust,
             )
+            self.assertEqual(tx_file.read_bytes(), before_tx)
+            self.assertFalse((tx_dir / "HEALTH.json").exists())
         self.assertEqual(code, constants.EXIT_FAILED_SAFE)
         self.assertEqual(body["reason"], "LICENSE_TRUST_INVALID")
         self.assertEqual(body["state"], "FAILED_SAFE")

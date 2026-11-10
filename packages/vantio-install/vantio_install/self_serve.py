@@ -32,7 +32,7 @@ def run_fetch(ctx: dict) -> tuple[int, dict]:
     try:
         checked = verify_token(token)
     except PackagedLicenseTrustError:
-        return refused_packaged_trust("fetch")
+        return refused_packaged_trust("fetch", transaction_id=ctx.get("transaction_id"))
     if not checked["ok"]:
         return _license_failure("fetch", checked)
     bundle_raw = ctx.get("bundle_dir")

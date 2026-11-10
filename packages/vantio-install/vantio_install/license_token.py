@@ -63,7 +63,7 @@ def public_license_fields(payload: dict) -> dict:
 
 
 class PackagedLicenseTrustError(Exception):
-    """The packaged license file has a row whose mode is not live."""
+    """The packaged license trust file is refused (a row is not an object or not mode live)."""
 
 
 def packaged_license_keys() -> tuple[dict, ...]:
