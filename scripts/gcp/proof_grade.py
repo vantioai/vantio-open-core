@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-# Pinned to Phantom Engine bf98115d. The cgroup_skb program records
+# Pinned to Phantom Engine d15444d6. The cgroup_skb program records
 # EVENT_KIND_CGROUP_BLOCK. The loader writes that row as EventType
 # NETWORK_BLOCK with DropPath cgroup_skb. BytesSevered is the full skb
 # length. A row whose EventType is CGROUP_BLOCK does not pass.

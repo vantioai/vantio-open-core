@@ -30,7 +30,7 @@ on:
       pe_git_sha:
         description: Phantom Engine git tip. Must match scripts/gcp/pe-pin.txt. Not a seal.
         required: true
-        default: bf98115d197accafebabc70fc3c06481686f95bd
+        default: d15444d694f81e2bde7a7495bd81c071d180a1cf
         type: string
       run_go:
         description: Zach's own-words run go. Not printed.

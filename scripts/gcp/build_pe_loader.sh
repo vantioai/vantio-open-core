@@ -156,7 +156,18 @@ apt-get install -y --no-install-recommends build-essential ca-certificates curl 
 curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}" --component rust-src --profile minimal
 . "$HOME/.cargo/env"
 curl -L --proto "=https" --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-cargo binstall --no-confirm "bpf-linker@${BPF_LINKER_VERSION}"
+# binstall asks the GitHub API, which answers 403 when the quota is spent
+# and then compiles bpf-linker from source. That compile needs llvm-config,
+# which this image does not have, and a source build is not the 0.12.0
+# release binary. On that failure, take the musl release asset directly.
+if ! timeout 60 cargo binstall --no-confirm "bpf-linker@${BPF_LINKER_VERSION}"; then
+  apt-get install -y --no-install-recommends zstd
+  curl -L --proto "=https" --tlsv1.2 -fsS \
+    -o /tmp/bpf-linker.tar.zst \
+    "https://github.com/aya-rs/bpf-linker/releases/download/v${BPF_LINKER_VERSION}/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+  tar -C "$HOME/.cargo/bin" --zstd -xf /tmp/bpf-linker.tar.zst
+  chmod 0755 "$HOME/.cargo/bin/bpf-linker"
+fi
 active="$(rustup show active-toolchain)"
 case "$active" in
   "${RUST_TOOLCHAIN}"*) ;;
@@ -184,6 +195,10 @@ export CFLAGS="-ffile-prefix-map=${checkout}=/vantio-src -ffile-prefix-map=${car
 export CXXFLAGS="${CFLAGS}"
 cargo +"${RUST_TOOLCHAIN}" build -p vantio-loader --release
 install -m 0755 "$(pwd)/target/release/vantio-loader" /out/vantio-loader
+ebpf="$(pwd)/target/bpfel-unknown-none/release/vantio-phantom-engine"
+if [ -f "$ebpf" ]; then
+  install -m 0644 "$ebpf" /out/vantio-phantom-engine
+fi
 if ldd /out/vantio-loader | grep -E "libssl|libcrypto"; then
   echo loader_libs >&2
   exit 1
