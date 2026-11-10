@@ -1,8 +1,13 @@
-"""Live license slot. Keys in this file are generated in memory and are not stored."""
+"""Live license slot.
+
+The packaged row is the production public key. Signature fixtures are
+generated in memory and are not stored.
+"""
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib.util
 import json
 import os
@@ -29,6 +34,14 @@ TRUST = ROOT / "vantio_install" / "trust" / "license-public-keys.json"
 LOADER = ROOT / "vantio_install" / "license_token.py"
 NOW = 1_800_000_000
 LIVE_KID = "lic-live-2026-10"
+LIVE_PUBLIC_B64 = "l7QzrGpjE1xQZbJNBVasOSFYTJyfiZh3espcPi2YvyM="
+LIVE_FINGERPRINT = "dbd00b512f9351781f27d11c6f80296815593c3fa6000c07e96a3b916ee666be"
+LIVE_ROW = {
+    "kid": LIVE_KID,
+    "alg": "Ed25519",
+    "public_key_b64": LIVE_PUBLIC_B64,
+    "mode": "live",
+}
 PLACEHOLDER = {
     "keys": [
         {
@@ -107,13 +120,35 @@ def _run(args: list[str], extra_env: dict[str, str] | None = None) -> subprocess
 
 
 class LoaderTests(unittest.TestCase):
-    def test_packaged_placeholder_is_rejected(self) -> None:
+    def test_packaged_live_key_and_fingerprint(self) -> None:
         payload = json.loads(TRUST.read_text(encoding="utf-8"))
-        self.assertEqual(payload, PLACEHOLDER)
-        self.assertEqual(packaged_license_keys(), ())
-        private = Ed25519PrivateKey.generate()
-        token = issue_token(_payload(), private)
-        self.assertEqual(verify_token(token, now=NOW)["reason"], "UNKNOWN_KID")
+        self.assertEqual(payload, {"keys": [LIVE_ROW]})
+        row = payload["keys"][0]
+        self.assertEqual(row["public_key_b64"], LIVE_PUBLIC_B64)
+        self.assertEqual(len(row["public_key_b64"]), 44)
+        raw = base64.b64decode(row["public_key_b64"], validate=True)
+        self.assertEqual(len(raw), 32)
+        self.assertEqual(base64.b64encode(raw).decode("ascii"), LIVE_PUBLIC_B64)
+        fingerprint = hashlib.sha256(raw).hexdigest()
+        self.assertEqual(fingerprint, LIVE_FINGERPRINT)
+        keys = packaged_license_keys()
+        self.assertEqual(len(keys), 1)
+        self.assertEqual(keys[0]["kid"], LIVE_KID)
+        self.assertEqual(keys[0]["alg"], "Ed25519")
+        self.assertEqual(keys[0]["mode"], "live")
+        self.assertEqual(keys[0]["public_key"], raw)
+        self.assertEqual(hashlib.sha256(keys[0]["public_key"]).hexdigest(), LIVE_FINGERPRINT)
+
+    def test_placeholder_and_empty_value_are_rejected(self) -> None:
+        empty = {"kid": LIVE_KID, "alg": "Ed25519", "public_key_b64": "", "mode": "live"}
+        self.assertEqual(keys_from_mapping({"keys": [empty]}), ())
+        self.assertEqual(keys_from_mapping({"keys": [PLACEHOLDER["keys"][0]]}), ())
+        marked = dict(LIVE_ROW)
+        marked["placeholder"] = True
+        self.assertEqual(keys_from_mapping({"keys": [marked]}), ())
+        false_mark = dict(LIVE_ROW)
+        false_mark["placeholder"] = False
+        self.assertEqual(keys_from_mapping({"keys": [false_mark]}), ())
 
     def test_placeholder_mark_rejects_a_32_byte_key(self) -> None:
         private = Ed25519PrivateKey.generate()
@@ -214,13 +249,29 @@ class LoaderTests(unittest.TestCase):
 
 
 class CheckerTests(unittest.TestCase):
-    def test_checker_reads_the_packaged_file_and_rejects_it(self) -> None:
+    def test_checker_accepts_the_packaged_file(self) -> None:
         self.assertEqual(CHECKER._DEFAULT, TRUST)
         proc = _run([])
-        self.assertEqual(proc.returncode, 1)
-        self.assertEqual(proc.stdout, "FAIL\n")
-        self.assertIn("placeholder row is not a trusted key", proc.stderr)
-        self.assertIn("public_key_b64 must be standard padded base64 of 32 bytes", proc.stderr)
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stdout, "PASS\n")
+        self.assertEqual(proc.stderr, "")
+        self.assertNotIn(LIVE_PUBLIC_B64, proc.stdout)
+        self.assertNotIn(LIVE_PUBLIC_B64, proc.stderr)
+
+    def test_checker_rejects_placeholder_and_empty(self) -> None:
+        empty = {"keys": [{"kid": LIVE_KID, "alg": "Ed25519", "public_key_b64": "", "mode": "live"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "license-public-keys.json"
+            path.write_text(json.dumps(empty), encoding="utf-8")
+            empty_proc = _run([str(path)])
+            path.write_text(json.dumps(PLACEHOLDER), encoding="utf-8")
+            marked_proc = _run([str(path)])
+        self.assertEqual(empty_proc.returncode, 1)
+        self.assertEqual(empty_proc.stdout, "FAIL\n")
+        self.assertIn("public_key_b64 must be standard padded base64 of 32 bytes", empty_proc.stderr)
+        self.assertEqual(marked_proc.returncode, 1)
+        self.assertEqual(marked_proc.stdout, "FAIL\n")
+        self.assertIn("placeholder row is not a trusted key", marked_proc.stderr)
 
     def test_valid_row_passes_and_mutations_fail(self) -> None:
         private = _key_with_url_alphabet()
@@ -281,14 +332,16 @@ class CheckerTests(unittest.TestCase):
             expect_fail(document(_row(private), [other]), "expected exactly one live row")
 
     def test_env_and_url_do_not_supply_a_key(self) -> None:
-        private = Ed25519PrivateKey.generate()
-        public_b64 = _row(private)["public_key_b64"]
-        decoy = json.dumps({"keys": [_row(private)]})
-        proc = _run([], {"VANTIO_LICENSE_PUBLIC_KEYS": decoy})
+        decoy = json.dumps({"keys": [LIVE_ROW]})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "license-public-keys.json"
+            path.write_text(json.dumps(PLACEHOLDER), encoding="utf-8")
+            proc = _run([str(path)], {"VANTIO_LICENSE_PUBLIC_KEYS": decoy})
         self.assertEqual(proc.returncode, 1)
         self.assertEqual(proc.stdout, "FAIL\n")
-        self.assertNotIn(public_b64, proc.stdout)
-        self.assertNotIn(public_b64, proc.stderr)
+        self.assertIn("placeholder row is not a trusted key", proc.stderr)
+        self.assertNotIn(LIVE_PUBLIC_B64, proc.stdout)
+        self.assertNotIn(LIVE_PUBLIC_B64, proc.stderr)
         url = _run(["https://vantio.ai/api/pe/license-keys"])
         self.assertEqual(url.returncode, 1)
         self.assertEqual(url.stdout, "FAIL\n")

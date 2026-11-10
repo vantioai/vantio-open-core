@@ -4,9 +4,10 @@ A token is ``vl1.`` + base64url(payload JSON) + ``.`` + base64url(Ed25519
 signature over the ASCII bytes ``vl1.`` + payload_b64). The signature covers
 those exact characters. The payload is not re-serialized before the check.
 
-The packaged trust file has one placeholder row for kid ``lic-live-2026-10``.
-``_parse_key`` rejects any row that still has a ``placeholder`` field, so
-that slot is not a trusted key. Tests inject keys through
+The packaged trust file holds one live Ed25519 public key for kid
+``lic-live-2026-10``. ``_parse_key`` rejects any row that still has a
+``placeholder`` field, and it rejects an empty ``public_key_b64``.
+Tests inject keys through
 ``license_trust_override``. The command line cannot set that override.
 Nothing in this module reads an environment variable or fetches a URL.
 Two trust rows with the same kid fail closed as ``DUPLICATE_KID``.

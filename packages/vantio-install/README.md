@@ -35,15 +35,9 @@ The supported host for this contract is Ubuntu 24.04 LTS on x86_64, with cgroup 
 
 The installer reads only `vantio_install/trust/license-public-keys.json`. That file is packaged with the installer. There is no environment override, no command-line override, and no fetch from a URL.
 
-The file ships with one placeholder row for kid `lic-live-2026-10`. `placeholder` is true and `public_key_b64` is empty. The loader rejects any row that still has a `placeholder` field. That slot is not a trusted key.
+The live row is kid `lic-live-2026-10`, algorithm `Ed25519`, mode `live`. `public_key_b64` is `l7QzrGpjE1xQZbJNBVasOSFYTJyfiZh3espcPi2YvyM=`. That is standard padded base64 of the 32 raw public-key bytes. The SHA-256 of those raw bytes is `dbd00b512f9351781f27d11c6f80296815593c3fa6000c07e96a3b916ee666be`. Zach ruled no rotation.
 
-Replace the placeholder with the production public key. The file is this object. The value is standard padded base64 of the raw 32-byte Ed25519 public key:
-
-```json
-{"keys":[{"kid":"lic-live-2026-10","alg":"Ed25519","public_key_b64":"<32 raw bytes, base64>","mode":"live"}]}
-```
-
-Remove `placeholder`. Base64url is rejected. A PEM private key is rejected. A 64-byte value is rejected. Paste the public key.
+The loader rejects a row that still has a `placeholder` field, and it rejects an empty `public_key_b64`. Base64url is rejected. A PEM private key is rejected. A 64-byte value is rejected.
 
 From this package directory, run:
 
@@ -52,7 +46,5 @@ python3 scripts/check-license-trust.py
 ```
 
 The command prints `PASS` or `FAIL` on its own line. A failure names the reason on stderr and does not print the key. `PASS` means the file has exactly one live row with kid `lic-live-2026-10`, algorithm `Ed25519`, and mode `live`, and that `public_key_b64` is standard padded base64 of 32 bytes. Two rows with the same kid are refused. `verify_token` returns `DUPLICATE_KID` and does not use the first row.
-
-`tests/test_license_trust.py` expects this placeholder until the row is replaced. Update that assertion in the same change as the key. Do not commit a private key.
 
 Rebuild, re-seal and publish are ZACH'S STEP after Quinn's review. Zach's Nov 10 go covers only the key step, not the release.

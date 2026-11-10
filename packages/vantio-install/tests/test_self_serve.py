@@ -109,8 +109,14 @@ def _transport(script: list[tuple[int, dict, bytes]]):
 
 
 class TokenTests(unittest.TestCase):
-    def test_packaged_license_trust_is_empty(self) -> None:
-        self.assertEqual(packaged_license_keys(), ())
+    def test_packaged_license_trust_is_the_live_public_key(self) -> None:
+        keys = packaged_license_keys()
+        self.assertEqual(len(keys), 1)
+        self.assertEqual(keys[0]["kid"], "lic-live-2026-10")
+        self.assertEqual(keys[0]["alg"], "Ed25519")
+        self.assertEqual(keys[0]["mode"], "live")
+        self.assertEqual(keys[0]["public_key_b64"], "l7QzrGpjE1xQZbJNBVasOSFYTJyfiZh3espcPi2YvyM=")
+        self.assertEqual(len(keys[0]["public_key"]), 32)
         self.assertEqual(constants.FROZEN_PINS["pe_archive_sha256"], PIN)
 
     def test_round_trip_and_refusals(self) -> None:

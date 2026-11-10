@@ -3,9 +3,8 @@
     {
       "kid": "lic-live-2026-10",
       "alg": "Ed25519",
-      "public_key_b64": "",
-      "mode": "live",
-      "placeholder": true
+      "public_key_b64": "l7QzrGpjE1xQZbJNBVasOSFYTJyfiZh3espcPi2YvyM=",
+      "mode": "live"
     }
   ]
 }
