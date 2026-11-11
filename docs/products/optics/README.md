@@ -2,7 +2,7 @@
 
 Manual version 1. Audience: public. Contract: `unstable-pre-1.0`.
 
-This folder is the public manual for **Vantio Optics**: free, local-first observability for supported AI-agent traffic. Optics records destination, process, size, and timing metadata. Prompts and completions are absent from Optics records.
+This folder is the public manual for **Vantio Optics**: free and open source (MIT), local-first observability for calls to supported AI providers. Optics records destination, process, size, and timing metadata. Prompts and completions are absent from Optics records.
 
 Enforcement is Phantom Engine. This manual does not document Phantom Engine installation, policy, or host protection.
 

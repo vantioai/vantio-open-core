@@ -119,7 +119,7 @@ export function createGateMcpServer() {
         brand: "Phantom Engine",
         compat_package: "@vantio/gate-mcp (legacy package name — Gate is not a separate Vantio product or subscription)",
         workflow: "Rules that stick",
-        sku: "Included in Phantom Engine ($799/node/mo — Observe + Enforce + Control)",
+        sku: "Included in Phantom Engine ($75 per Linux server/mo month-to-month, up to 99 servers; annual graduated: $60 for servers 1–99, $45 for 100–499, $35 for 500+; 100+ servers annual only — Observe + Enforce + Control)",
         does: [
           "Say that this MCP does not preview or apply enforcement",
           "Point live enforcement at Phantom Engine",
