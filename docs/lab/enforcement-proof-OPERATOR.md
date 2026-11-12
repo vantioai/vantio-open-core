@@ -39,7 +39,21 @@ Zach clicks **GCP lab enforcement proof** on `main`.
 
 ## Guest kernel decision
 
-`7.0` and `6.12` are dispatch choices and are not images. This repository does not name a public image family or a project image for either one. Creating or enabling that image is a GCP-side decision for Zach. This workflow does not make it. The allowlist, the ancestor check, and the workload-identity workflow are unchanged. `live_enforcement` stays **NOT_PROVEN**.
+`7.0` and `6.12` stay refused before a VM. They are not mapped to an image.
+
+The families that would match those kernels are `ubuntu-os-cloud/ubuntu-2604-lts-amd64` for 7.0 and `debian-cloud/debian-13` for 6.12. The lab create policy does not allow either one:
+
+- `offline_create_argv` in `scripts/gcp/offline_deliver_1.py` exits `image` unless `image_family` is `ubuntu-2404-lts-amd64` and `image_project` is `ubuntu-os-cloud`. The gcloud command then hardcodes `--image-family=ubuntu-2404-lts-amd64` and `--image-project=ubuntu-os-cloud`.
+- `ENUMS["image"]` is only `ubuntu-os-cloud/ubuntu-2404-lts-amd64`. `distro_scope` is `ubuntu-2404-only`. The create test asserts `debian-cloud` is absent from the argv.
+
+WIF `attribute_condition` names the repository, `refs/heads/main`, and the workflow files. It does not grant an image project. It was not edited. The allowlist and the ancestor check were not edited.
+
+The GCP-side change required before those kernels can be mapped:
+
+1. Let `vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com` use `projects/ubuntu-os-cloud/global/images/family/ubuntu-2604-lts-amd64` and `projects/debian-cloud/global/images/family/debian-13` (`compute.images.useReadOnly`). If `constraints/compute.trustedImageProjects` is set, it has to include `projects/debian-cloud` as well as `projects/ubuntu-os-cloud`.
+2. After that, this repo's create allowlist has to accept those two project and family pairs, and the guest step has to fail unless `uname -r` matches the pick (`7.0` or `6.12`). That code change is not in this branch.
+
+`live_enforcement` stays **NOT_PROVEN**.
 
 The runner reaches the guest with the existing IAP helper: `gcloud compute ssh`, `--tunnel-through-iap`, `--project=vantio-lab-oct08`, `--zone=us-central1-a`, OS Login key expiry one hour. There is no laptop login in this workflow. The IAP command is `sudo bash /var/lib/vantio-lab/guest/run-proof-phase.sh PHASE`. The run go stays in a mode `0600` file on the guest, not in that command.
 

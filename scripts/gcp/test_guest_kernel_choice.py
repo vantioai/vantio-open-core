@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 import enforcement_proof as ep
+import offline_deliver as od
 
 
 def _env(**extra: str) -> dict[str, str]:
@@ -47,6 +48,27 @@ class GuestKernelChoiceTests(unittest.TestCase):
         self.assertNotIn("debian-13", text)
         self.assertIn("pe-git-sha-allowlist.txt", text)
         self.assertNotIn("google-github-actions/auth@", text)
+
+    def test_create_policy_refuses_2604_and_debian_13(self) -> None:
+        base = {
+            "project_id": "vantio-lab-oct08",
+            "name": "vantio-gcp-lab-12",
+            "public_ip": False,
+            "service_account": None,
+            "network": od.NETWORK,
+            "subnet": od.SUBNET,
+            "labels": od.offline_labels(1_800_000_000, 120),
+        }
+        for family, project in (
+            ("ubuntu-2604-lts-amd64", "ubuntu-os-cloud"),
+            ("debian-13", "debian-cloud"),
+        ):
+            plan = dict(base)
+            plan["image_family"] = family
+            plan["image_project"] = project
+            with self.assertRaises(SystemExit) as caught:
+                od.offline_create_argv(plan, "/tmp/startup.sh")
+            self.assertEqual(caught.exception.code, "image")
 
 
 if __name__ == "__main__":
