@@ -388,6 +388,54 @@ def kept_lines(text: str) -> list[str]:
     return found
 
 
+def green_full_rows() -> list[tuple[str, list[str], int]]:
+    """Accepted lines for phases_for('full'). The reboot action has no grade line."""
+    accepted = {
+        "compare": (["compare=PASS"], 0),
+        "file-deny": (["file_deny=PASS"], 0),
+        "reboot-pre": (["reboot_pre=RECORDED"], 0),
+        "reboot-post": (["reboot_wiped=PASS", "reboot_restored=NOT_RUN"], 0),
+        "expired-key": (["license_exp_claim=NOT_PROVEN"], 0),
+        "uninstall": (["uninstall=VERIFIED"], 0),
+    }
+    rows: list[tuple[str, list[str], int]] = []
+    for phase in phases_for("full"):
+        if phase == "reboot":
+            continue
+        lines, returncode = accepted[phase]
+        rows.append((phase, list(lines), returncode))
+    return rows
+
+
+def overall_grade(
+    phase_rows: Sequence[tuple[str, Sequence[str], int]],
+    *,
+    ds_wired: bool,
+) -> str:
+    """Overall grade for one lab run.
+
+    Every phase line may be accepted. That run is still INCOMPLETE while DS
+    is unwired. This function does not return PASS.
+    """
+    graded = [
+        (phase, lines, returncode)
+        for phase, lines, returncode in phase_rows
+        if phase not in {"reboot", "archive"}
+    ]
+    green = bool(graded) and all(
+        phase_accepted(phase, lines, returncode) for phase, lines, returncode in graded
+    )
+    if not ds_wired:
+        grade = "INCOMPLETE"
+    elif green:
+        grade = "NOT_PROVEN"
+    else:
+        grade = "INCOMPLETE"
+    if grade == "PASS":
+        raise SystemExit("overall")
+    return grade
+
+
 def phase_accepted(phase: str, lines: Sequence[str], returncode: int) -> bool:
     if returncode == 255:
         return False

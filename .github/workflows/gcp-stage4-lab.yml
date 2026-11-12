@@ -1,0 +1,197 @@
+---
+name: GCP stage 4 lab
+
+# workflow_dispatch only. Do not add push, pull_request, or schedule.
+# live_enforcement stays NOT_PROVEN. The overall grade stays INCOMPLETE
+# while DS is not wired. A green phase list is not PASS.
+# This file does not dispatch itself.
+#
+# Workload identity stays in gcp-lab-cost-gate.yml. That file's provider,
+# service account, and gcp-lab environment are the ones this lab uses.
+# This file does not declare an environment and does not authenticate.
+# Merging this diff widens what gcp-lab-cost-gate.yml can do. The provider
+# trusts that file path at main and does not pin a blob SHA. WORKFLOWS is
+# unchanged. fetch-pe refuses unless this caller file is at refs/heads/main,
+# and it does that before the private checkout.
+
+on:
+  workflow_dispatch:
+    inputs:
+      soak_minutes:
+        description: Health-check minutes after the harness. 1 to 240.
+        required: false
+        default: "60"
+        type: string
+      run_go:
+        description: Founder go. Masked. Empty refuses before any VM.
+        required: false
+        default: ""
+        type: string
+      host_name:
+        description: Guest host name. Masked. Empty refuses before any VM.
+        required: false
+        default: ""
+        type: string
+      ds_ref:
+        description: >-
+          Phantom Engine ref or sha for DS checks from PR 85.
+          Recorded only. Not fetched.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  # Same group as gcp-lab-enforcement-proof.yml, so a proof run and a
+  # stage 4 run do not create VMs at the same time. The called cost-gate
+  # file keeps group gcp-lab-cost-gate. Sharing that name here would
+  # deadlock the reusable call.
+  group: vantio-gce-slot
+  cancel-in-progress: false
+
+env:
+  GCP_LAB_PROJECT: vantio-lab-oct08
+  GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
+
+jobs:
+  guard:
+    name: Refuse before any VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout this workflow
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Mask dispatch inputs
+        env:
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/lab/stage4_plan.py mask-lines
+
+      - name: Guard
+        env:
+          SOAK_MINUTES: ${{ inputs.soak_minutes }}
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+          DS_REF: ${{ inputs.ds_ref }}
+          HARNESS_CANDIDATES: .
+        run: |
+          set -euo pipefail
+          python3 scripts/lab/stage4_plan.py workflow-triggers \
+            .github/workflows/gcp-stage4-lab.yml
+          python3 scripts/lab/stage4_plan.py wif-reuse \
+            .github/workflows/gcp-stage4-lab.yml
+          python3 scripts/lab/stage4_drive.py guard
+
+  fetch-pe:
+    name: Build the pinned loader on the runner
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      pe_git_sha: ${{ steps.pin.outputs.sha }}
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          workflow_ref="vantioai/vantio-open-core/.github/workflows"
+          workflow_ref="${workflow_ref}/gcp-stage4-lab.yml@refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "$workflow_ref"
+
+      - name: Checkout this workflow
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Read the harness pin
+        id: pin
+        run: |
+          set -euo pipefail
+          read_pin='import sys; sys.path.insert(0, "scripts/gcp");'
+          read_pin+='import enforcement_proof; print(enforcement_proof.PE_GIT_SHA)'
+          pin=$(python3 -c "$read_pin")
+          if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "pe_git_sha" >&2
+            exit 1
+          fi
+          echo "sha=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+
+      - name: Checkout the pinned Phantom Engine commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: vantioai/vantio-phantom-engine
+          ref: ${{ steps.pin.outputs.sha }}
+          # DRAFT ONLY. One-line swap. This token is slated for revocation.
+          # Zach decides the replacement. This file does not create one.
+          # (a) fine-grained read-only token, vantio-phantom-engine contents
+          # (b) read-only deploy key scoped to vantio-phantom-engine
+          token: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+          persist-credentials: false
+          path: pe-src
+          fetch-depth: 1
+
+      - name: Drop checkout credentials from the remote URL
+        run: |
+          set -euo pipefail
+          git -C pe-src remote set-url origin \
+            https://github.com/vantioai/vantio-phantom-engine.git
+
+      - name: Build the loader on the runner
+        env:
+          PIN: ${{ steps.pin.outputs.sha }}
+        run: |
+          set -euo pipefail
+          head=$(git -C pe-src rev-parse HEAD)
+          test "$head" = "$PIN"
+          mkdir -p loader-out/debian loader-out/ubuntu
+          bash scripts/gcp/build_pe_loader.sh \
+            "$PWD/pe-src" "$PWD/loader-out/debian" "$PIN" debian13
+          bash scripts/gcp/build_pe_loader.sh \
+            "$PWD/pe-src" "$PWD/loader-out/ubuntu" "$PIN" ubuntu2604
+          printf '%s\n' "$PIN" > loader-out/debian/SOURCE_SHA
+          printf '%s\n' "$PIN" > loader-out/ubuntu/SOURCE_SHA
+
+      - name: Upload the runner-built loader
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stage4-loader-${{ github.run_id }}
+          path: loader-out/
+          retention-days: 1
+          if-no-files-found: error
+
+  lab:
+    name: Run stage 4 inside the cost gate
+    needs: [guard, fetch-pe]
+    if: needs.guard.result == 'success' && needs.fetch-pe.result == 'success'
+    uses: vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      stage4: "1"
+      soak_minutes: ${{ inputs.soak_minutes }}
+      run_go: ${{ inputs.run_go }}
+      host_name: ${{ inputs.host_name }}
+      ds_ref: ${{ inputs.ds_ref }}
+      pe_git_sha: ${{ needs.fetch-pe.outputs.pe_git_sha }}

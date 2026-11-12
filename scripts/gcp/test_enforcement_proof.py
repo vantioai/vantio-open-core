@@ -129,6 +129,13 @@ class ObservationTests(unittest.TestCase):
         self.assertIsNone(ep.keep_line("compare=pass"))
         self.assertIsNone(ep.keep_line("compare=PROVEN"))
         self.assertIsNone(ep.keep_line(f"note={GO}"))
+        rows = ep.green_full_rows()
+        for phase, lines, returncode in rows:
+            self.assertTrue(ep.phase_accepted(phase, lines, returncode))
+        self.assertEqual(ep.overall_grade(rows, ds_wired=False), "INCOMPLETE")
+        self.assertNotEqual(ep.overall_grade(rows, ds_wired=False), "PASS")
+        self.assertEqual(ep.overall_grade(rows, ds_wired=True), "NOT_PROVEN")
+        self.assertNotEqual(ep.overall_grade(rows, ds_wired=True), "PASS")
         self.assertTrue(ep.phase_accepted("compare", ["compare=PASS"], 0))
         self.assertFalse(ep.phase_accepted("compare", ["compare=REFUSED_LSM"], 0))
         self.assertTrue(
@@ -440,6 +447,11 @@ class CreateAndBuildTests(unittest.TestCase):
             volumes = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
             self.assertTrue(_cargo_workdir_is_checkout(workdir, f"{workdir}:{workdir}:ro", checkout))
             self.assertIn(f"{workdir}:{workdir}:ro", volumes)
+            self.assertIn(
+                "ubuntu:24.04@sha256:77eb101c607d6e3d4f5ad0c8a02c2136c689b98aba1f359e6502ba517e5c57ec",
+                args,
+            )
+            self.assertNotIn("debian:13", args)
             self.assertNotIn("/src", workdir)
             self.assertTrue((Path(workdir) / "Cargo.toml").is_file())
             flipped = workdir[:-1] + ("x" if workdir[-1] != "x" else "y")
@@ -449,6 +461,111 @@ class CreateAndBuildTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine"', workflow)
         self.assertNotIn("build_pe_loader.sh phantom-engine ", workflow)
+
+    def test_stage4_images_replace_the_ubuntu_2404_container(self) -> None:
+        text = BUILD.read_text(encoding="utf-8")
+        self.assertNotIn("The guest is an e2-micro", text)
+        self.assertIn("e2-standard-2", text)
+        self.assertIn("binstall_tag=v1.27.0", text)
+        self.assertIn("bpf_linker_version=0.13.0", text)
+        self.assertIn("b2e4b70fcddc5bd6fd90c5cf8dc17b4cf0ea54a3db16c65ee0307f42c9bd3187", text)
+        self.assertIn("0e9b2b30f68898177f1cb6f0ecbfa909a82479473a49a0ef66529fd088e3e410", text)
+        self.assertNotIn("cargo binstall --no-confirm", text)
+        first_check = text.index("sha256sum -c -")
+        second_check = text.index("sha256sum -c -", first_check + 1)
+        self.assertLess(first_check, text.index('tar -C "$HOME/.cargo/bin" -xzf'))
+        self.assertLess(second_check, text.index('tar --zstd -C "$HOME/.cargo/bin" -xf'))
+        self.assertNotIn("install-from-binstall-release.sh", text)
+        self.assertNotIn("cargo-binstall/main", text)
+        self.assertNotIn("sh.rustup.rs", text)
+        self.assertNotIn("--default-toolchain nightly --", text)
+        self.assertIn("rustup_version=1.29.3", text)
+        self.assertIn("b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55", text)
+        self.assertIn("rustup_toolchain=nightly-2026-11-12", text)
+        self.assertIn("20261111T000000Z", text)
+        self.assertIn("20261112T025704Z", text)
+        self.assertIn(
+            "ubuntu:24.04@sha256:77eb101c607d6e3d4f5ad0c8a02c2136c689b98aba1f359e6502ba517e5c57ec",
+            text,
+        )
+        self.assertIn(
+            "debian:13@sha256:bfc36aecdece0387418759dba474aa856c026ca8087da3606b41b90ab0509c99",
+            text,
+        )
+        self.assertIn(
+            "ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6",
+            text,
+        )
+        rustup_check = text.index('"$RUSTUP_SHA256" /tmp/rustup-init | sha256sum -c -')
+        self.assertLess(rustup_check, text.index("/tmp/rustup-init -y"))
+        self.assertLess(text.index("printf \"%s\\n\" \"$APT_SOURCES\""), text.index("apt-get update"))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            for guest, image, other in (
+                (
+                    "debian13",
+                    "debian:13@sha256:bfc36aecdece0387418759dba474aa856c026ca8087da3606b41b90ab0509c99",
+                    "ubuntu:24.04",
+                ),
+                (
+                    "ubuntu2604",
+                    "ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6",
+                    "ubuntu:24.04",
+                ),
+            ):
+                done = subprocess.run(
+                    ["bash", str(BUILD), "phantom-engine", "out", PIN, guest],
+                    capture_output=True,
+                    text=True,
+                    cwd=root,
+                    env=env,
+                    check=False,
+                )
+                self.assertEqual(done.returncode, 0, done.stderr)
+                args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+                self.assertIn(image, args)
+                self.assertNotIn(other, args)
+            (root / "docker.log").unlink()
+            refused = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN, "ubuntu2404"],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("build_image", refused.stderr)
+            self.assertFalse((root / "docker.log").exists())
+
+    def test_flipped_digest_fails_before_extract(self) -> None:
+        digest = hashlib.sha256(b"pin").hexdigest()
+        flipped = digest[:-1] + ("0" if digest[-1] != "0" else "1")
+        self.assertNotEqual(flipped, digest)
+        with tempfile.TemporaryDirectory() as tmp:
+            blob = Path(tmp) / "blob"
+            blob.write_bytes(b"pin")
+            check = "printf '%s  %s\\n' \"$DIGEST\" \"$BLOB\" | sha256sum -c -"
+            good = subprocess.run(
+                ["bash", "-c", check],
+                capture_output=True,
+                text=True,
+                env={"DIGEST": digest, "BLOB": str(blob)},
+                check=False,
+            )
+            bad = subprocess.run(
+                ["bash", "-c", check],
+                capture_output=True,
+                text=True,
+                env={"DIGEST": flipped, "BLOB": str(blob)},
+                check=False,
+            )
+        self.assertEqual(good.returncode, 0, good.stderr)
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertNotIn("tar ", check)
 
     def test_missing_manifest_does_not_start_docker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

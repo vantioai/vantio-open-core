@@ -60,6 +60,22 @@ on:
         required: false
         type: string
         default: ""
+      stage4:
+        description: 1 runs the stage 4 lab jobs in this file. Empty skips them.
+        required: false
+        type: string
+        default: ""
+      soak_minutes:
+        description: Stage 4 health-check minutes. Ignored unless stage4 is 1.
+        required: false
+        type: string
+        default: "60"
+      ds_ref:
+        description: >-
+          Stage 4 DS ref or sha. Recorded only. Ignored unless stage4 is 1.
+        required: false
+        type: string
+        default: ""
     outputs:
       expected_oop_usd:
         description: Zero only when the lab cap check passes.
@@ -94,6 +110,13 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             workflow_dispatch|workflow_call) ;;
             *) echo "unexpected event $GITHUB_EVENT_NAME" >&2; exit 1 ;;
+          esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-enforcement-proof.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
           esac
 
       - name: Refuse static GCP keys
@@ -411,7 +434,8 @@ jobs:
           mkdir -p "$EVIDENCE_DIR"
           vantio run python3 scripts/gcp/lab_auto.py cost-gate | tee "$EVIDENCE_DIR/cost-gate.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); raise SystemExit(0 if d.get("expected_oop_usd")=="0" and d.get("abort") is False else 2)' "$EVIDENCE_DIR/cost-gate.json"
-          export GCP_LAB_GATE_JSON="$(cat "$EVIDENCE_DIR/cost-gate.json")"
+          GCP_LAB_GATE_JSON="$(cat "$EVIDENCE_DIR/cost-gate.json")"
+          export GCP_LAB_GATE_JSON
           vantio run python3 scripts/gcp/enforcement_proof.py run
 
       - name: Remove the OS Login key
@@ -608,5 +632,465 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-gcp-lab-enforcement-proof-teardown-on-failure
+          path: optics-observe-log
+          if-no-files-found: warn
+
+  stage4-target:
+    name: Stage 4 ${{ matrix.role }}
+    needs: gate
+    if: >-
+      ${{ inputs.stage4 == '1' && needs.gate.result == 'success' &&
+      needs.gate.outputs.expected_oop_usd == '0' }}
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    environment: gcp-lab
+    timeout-minutes: 360
+    outputs:
+      ds_hold: ${{ steps.ds.outputs.ds_hold }}
+      overall: ${{ steps.ds.outputs.overall }}
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [debian, ubuntu, refuse]
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "event" >&2; exit 1 ;;
+          esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+          test "$GCP_LAB_SERVICE_ACCOUNT" = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Mask dispatch inputs
+        env:
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/lab/stage4_plan.py mask-lines
+
+      - name: Download the runner-built loader
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: stage4-loader-${{ github.run_id }}
+          path: loader-out
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install Optics observe CLI
+        id: optics-install
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/vantio-npm"
+          mkdir -p "$prefix"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "vantio CLI install failed: npm is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "vantio CLI install failed: python3 is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! npm install -g --prefix "$prefix" @vantio/cli; then
+            echo "vantio CLI install failed: npm install -g --prefix ${prefix} @vantio/cli" >&2
+            exit 1
+          fi
+          if ! "$prefix/bin/vantio" --version >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not runnable at ${prefix}/bin/vantio." >&2
+            exit 1
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          if ! python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk; then
+            echo "vantio CLI install: pip --user failed. Retrying with --break-system-packages." >&2
+            if ! python3 -m pip install --disable-pip-version-check --user --break-system-packages vantio-agent-sdk; then
+              echo "vantio CLI install failed: python3 -m pip install --user vantio-agent-sdk" >&2
+              exit 1
+            fi
+          fi
+          if ! python3 -c 'import vantio'; then
+            echo "vantio CLI install failed: python3 cannot import vantio after pip install vantio-agent-sdk." >&2
+            exit 1
+          fi
+
+      - name: Run the lab role
+        env:
+          GCP_LAB_EXECUTE: "1"
+          ROLE: ${{ matrix.role }}
+          SOAK_MINUTES: ${{ inputs.soak_minutes }}
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+          DS_REF: ${{ inputs.ds_ref }}
+          LOADER_DIR: ${{ matrix.role == 'ubuntu' && 'loader-out/ubuntu' || 'loader-out/debian' }}
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
+          HARNESS_CANDIDATES: .
+          STAGE4_AFTER_AUTH: "1"
+        run: vantio run python3 scripts/lab/stage4_drive.py target
+
+      - name: DS hold
+        id: ds
+        if: always()
+        env:
+          DS_REF: ${{ inputs.ds_ref }}
+          RUN_GO: ${{ inputs.run_go }}
+          HARNESS_CANDIDATES: .
+        run: |
+          set -euo pipefail
+          python3 scripts/lab/stage4_drive.py summary | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stage4-${{ matrix.role }}-${{ github.run_id }}
+          path: stage4-logs/
+          if-no-files-found: warn
+          retention-days: 5
+
+      - name: Collect Optics observation log
+        if: always()
+        env:
+          OPTICS_OUTCOME: ${{ steps.optics-install.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$OPTICS_OUTCOME" != "success" ]; then
+            echo "vantio CLI install failed: Optics observe CLI was not installed, so this job cannot record an observation." >&2
+            exit 1
+          fi
+          if ! command -v vantio >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not on PATH while collecting Optics logs." >&2
+            exit 1
+          fi
+          mkdir -p optics-observe-log
+          if [ -d "${HOME}/.vantio/runs" ]; then
+            cp -a "${HOME}/.vantio/runs/." optics-observe-log/
+          fi
+          found=0
+          shopt -s nullglob
+          for run_file in optics-observe-log/*; do
+            if [ -e "$run_file" ]; then
+              found=1
+              break
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Optics wrote no run file under ${HOME}/.vantio/runs." >&2
+            echo "A Node process wrapped with vantio run writes a file when that process exits." >&2
+            echo "A Python process writes a file only after an in-scope call. Registry, cloud, and GitHub calls are outside that set." >&2
+          fi
+
+      - name: Upload Optics observation log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-gcp-lab-cost-gate-stage4-${{ matrix.role }}
+          path: optics-observe-log
+          if-no-files-found: warn
+
+  stage4-teardown:
+    name: Delete this stage 4 run
+    needs: stage4-target
+    if: ${{ always() && inputs.stage4 == '1' }}
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    environment: gcp-lab
+    timeout-minutes: 20
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "event" >&2; exit 1 ;;
+          esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install Optics observe CLI
+        id: optics-install
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/vantio-npm"
+          mkdir -p "$prefix"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "vantio CLI install failed: npm is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "vantio CLI install failed: python3 is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! npm install -g --prefix "$prefix" @vantio/cli; then
+            echo "vantio CLI install failed: npm install -g --prefix ${prefix} @vantio/cli" >&2
+            exit 1
+          fi
+          if ! "$prefix/bin/vantio" --version >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not runnable at ${prefix}/bin/vantio." >&2
+            exit 1
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          if ! python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk; then
+            echo "vantio CLI install: pip --user failed. Retrying with --break-system-packages." >&2
+            if ! python3 -m pip install --disable-pip-version-check --user --break-system-packages vantio-agent-sdk; then
+              echo "vantio CLI install failed: python3 -m pip install --user vantio-agent-sdk" >&2
+              exit 1
+            fi
+          fi
+          if ! python3 -c 'import vantio'; then
+            echo "vantio CLI install failed: python3 cannot import vantio after pip install vantio-agent-sdk." >&2
+            exit 1
+          fi
+
+      - name: Delete labelled resources
+        env:
+          GCP_LAB_EXECUTE: "1"
+        run: vantio run python3 scripts/lab/stage4_drive.py teardown
+
+      - name: Collect Optics observation log
+        if: always()
+        env:
+          OPTICS_OUTCOME: ${{ steps.optics-install.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$OPTICS_OUTCOME" != "success" ]; then
+            echo "vantio CLI install failed: Optics observe CLI was not installed, so this job cannot record an observation." >&2
+            exit 1
+          fi
+          if ! command -v vantio >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not on PATH while collecting Optics logs." >&2
+            exit 1
+          fi
+          mkdir -p optics-observe-log
+          if [ -d "${HOME}/.vantio/runs" ]; then
+            cp -a "${HOME}/.vantio/runs/." optics-observe-log/
+          fi
+          found=0
+          shopt -s nullglob
+          for run_file in optics-observe-log/*; do
+            if [ -e "$run_file" ]; then
+              found=1
+              break
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Optics wrote no run file under ${HOME}/.vantio/runs." >&2
+            echo "A Node process wrapped with vantio run writes a file when that process exits." >&2
+            echo "A Python process writes a file only after an in-scope call. Registry, cloud, and GitHub calls are outside that set." >&2
+          fi
+
+      - name: Upload Optics observation log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-gcp-lab-cost-gate-stage4-teardown
+          path: optics-observe-log
+          if-no-files-found: warn
+
+  stage4-verify:
+    name: Assert this stage 4 run is gone
+    needs: stage4-teardown
+    if: ${{ always() && inputs.stage4 == '1' }}
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    environment: gcp-lab
+    timeout-minutes: 15
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "event" >&2; exit 1 ;;
+          esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install Optics observe CLI
+        id: optics-install
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/vantio-npm"
+          mkdir -p "$prefix"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "vantio CLI install failed: npm is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "vantio CLI install failed: python3 is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! npm install -g --prefix "$prefix" @vantio/cli; then
+            echo "vantio CLI install failed: npm install -g --prefix ${prefix} @vantio/cli" >&2
+            exit 1
+          fi
+          if ! "$prefix/bin/vantio" --version >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not runnable at ${prefix}/bin/vantio." >&2
+            exit 1
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          if ! python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk; then
+            echo "vantio CLI install: pip --user failed. Retrying with --break-system-packages." >&2
+            if ! python3 -m pip install --disable-pip-version-check --user --break-system-packages vantio-agent-sdk; then
+              echo "vantio CLI install failed: python3 -m pip install --user vantio-agent-sdk" >&2
+              exit 1
+            fi
+          fi
+          if ! python3 -c 'import vantio'; then
+            echo "vantio CLI install failed: python3 cannot import vantio after pip install vantio-agent-sdk." >&2
+            exit 1
+          fi
+
+      - name: List by label and fail if any remain
+        env:
+          GCP_LAB_EXECUTE: "1"
+        run: vantio run python3 scripts/lab/stage4_drive.py verify
+
+      - name: Collect Optics observation log
+        if: always()
+        env:
+          OPTICS_OUTCOME: ${{ steps.optics-install.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$OPTICS_OUTCOME" != "success" ]; then
+            echo "vantio CLI install failed: Optics observe CLI was not installed, so this job cannot record an observation." >&2
+            exit 1
+          fi
+          if ! command -v vantio >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not on PATH while collecting Optics logs." >&2
+            exit 1
+          fi
+          mkdir -p optics-observe-log
+          if [ -d "${HOME}/.vantio/runs" ]; then
+            cp -a "${HOME}/.vantio/runs/." optics-observe-log/
+          fi
+          found=0
+          shopt -s nullglob
+          for run_file in optics-observe-log/*; do
+            if [ -e "$run_file" ]; then
+              found=1
+              break
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Optics wrote no run file under ${HOME}/.vantio/runs." >&2
+            echo "A Node process wrapped with vantio run writes a file when that process exits." >&2
+            echo "A Python process writes a file only after an in-scope call. Registry, cloud, and GitHub calls are outside that set." >&2
+          fi
+
+      - name: Upload Optics observation log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-gcp-lab-cost-gate-stage4-verify
           path: optics-observe-log
           if-no-files-found: warn
