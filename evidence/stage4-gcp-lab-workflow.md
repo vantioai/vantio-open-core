@@ -105,10 +105,14 @@ event name fails the guard. The caller `on:` block is still only
 when a phase is accepted. `fetch_offline_debs.sh` is an Ubuntu 24.04
 snapshot. A non-refuse role with `GCP_LAB_EXECUTE=1` raises `deb_boot`
 before any create unless `STAGE4_DEB_BOOT` is `debian13-and-ubuntu2604`.
-Nothing in this tree sets that variable. The summary command grades an
-empty row list. It does not call `green_full_rows()`. That function is a
-unit fixture. The unit test of a synthetic green list with the DS hold
-still grades `INCOMPLETE`, not `PASS`.
+Nothing in this tree sets that variable. The summary command grades
+`stage4-logs/phase-rows.txt` when that file is present. Each record is
+one observed phase, written only after `phase_accepted`. When the file
+is absent, the summary prints the hold and `OVERALL INCOMPLETE` and
+does not call `green_full_rows()`. That function is a unit fixture. The
+unit test of a synthetic green list with the DS hold still grades
+`INCOMPLETE`, not `PASS`. A phase line is not host evidence until both
+image pins have been booted. Neither pin was booted.
 
 Before create, the drive runs `gcloud compute images describe` for the
 pinned image name and does not create if that command fails or returns a
@@ -156,10 +160,13 @@ DS NOT WIRED — waiting on #85 run 26
 That command exits 0. It does not print PASS. The hold string is the only
 DS record. The job summary step is
 `python3 scripts/lab/stage4_drive.py summary`. That command also exits 0.
-It grades an empty row list with DS unwired and prints
-`OVERALL INCOMPLETE` and `live_enforcement=NOT_PROVEN`. It does not print
-`compare=PASS`. A green job means the harness slice returned. The summary
-line is the unwired hold. The step id is `ds`. When `GITHUB_OUTPUT` is
+It grades `phase-rows.txt` when that observed log is present, and an
+empty list when the log is absent. It does not call `green_full_rows()`.
+With DS unwired it prints `OVERALL INCOMPLETE` and
+`live_enforcement=NOT_PROVEN`. It does not print `compare=PASS`. A green
+job means the harness slice returned. The summary line is the unwired
+hold. An accepted phase line is not host evidence until both image pins
+have been booted. The step id is `ds`. When `GITHUB_OUTPUT` is
 set, the same command appends `ds_hold` (heredoc delimiter `STAGE4_DS`)
 and `overall=INCOMPLETE`. The `stage4-target` job outputs are
 `steps.ds.outputs.ds_hold` and `steps.ds.outputs.overall`. A fully green
@@ -173,7 +180,7 @@ a missing harness, or `deb_boot`, not the DS step.
 | `python3 -m py_compile scripts/lab/stage4_plan.py scripts/lab/stage4_drive.py scripts/lab/test_stage4_plan.py scripts/gcp/test_enforcement_proof.py` | 0 |
 | `bash -n scripts/lab/stage4_guest.sh` and `bash -n scripts/gcp/build_pe_loader.sh` | 0 |
 | `shellcheck` on both scripts (0.9.0) | 0 |
-| `python3 -m unittest discover -s scripts/lab -q` | 0 (142 tests, no skip lines) |
+| `python3 -m unittest discover -s scripts/lab -q` | 0 (143 tests, no skip lines) |
 | `/tmp/actionlint` on `gcp-stage4-lab.yml` and `gcp-lab-cost-gate.yml` (1.7.12) | 0 |
 | `yamllint` on `gcp-stage4-lab.yml`, line-length 120, truthy and comments disabled | 0 |
 | `python3 scripts/gcp/test_enforcement_proof.py -q` | 0 (24 tests) |
@@ -183,7 +190,7 @@ a missing harness, or `deb_boot`, not the DS step.
 | `node docs/scripts/check-docs-release.mjs` | 0 |
 | `python3 -m unittest test_offline_deliver.OfflineDeliverTest.test_workflow_keeps_wif_and_hides_the_bundle` from `scripts/gcp` | 0 |
 | secret-scan `git grep` for private-key and token shapes on the touched files | 1 (`git grep` exit 1 means no matches) |
-| `HARNESS_CANDIDATES=. DS_REF=cursor/redteam-holds-8374 python3 scripts/lab/stage4_drive.py summary` | 0 (`OVERALL INCOMPLETE`, no `compare=PASS`) |
+| `HARNESS_CANDIDATES=. DS_REF=cursor/redteam-holds-8374 python3 scripts/lab/stage4_drive.py summary` | 0 (`observed_phases=0`, `OVERALL INCOMPLETE`, no `compare=PASS`) |
 | DS hold command below | 0 |
 | negative guard below | 2 |
 

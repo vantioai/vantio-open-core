@@ -432,6 +432,57 @@ def _stage_harness(name: str, harness: object, loader_dir: Path, deb_dir: Path) 
         raise PlanError("guest_prepare")
 
 
+def _append_phase_row(phase: str, lines: list[str], returncode: int) -> None:
+    """Append one observed phase. The summary grades this file, not a fixture."""
+    body = [f"phase={phase} rc={returncode}", *lines, "."]
+    _append_log("phase-rows.txt", "\n".join(body) + "\n")
+
+
+def _read_phase_rows(path: Path) -> list[tuple[str, list[str], int]] | None:
+    """Observed rows. None means the log was not written."""
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    if text == "":
+        return []
+    rows: list[tuple[str, list[str], int]] = []
+    phase: str | None = None
+    returncode: int | None = None
+    lines: list[str] = []
+    for raw in text.splitlines():
+        if raw == ".":
+            if phase is None or returncode is None:
+                raise PlanError("phase_log")
+            rows.append((phase, lines, returncode))
+            phase = None
+            returncode = None
+            lines = []
+            continue
+        if phase is None and raw.startswith("phase=") and " rc=" in raw:
+            left, right = raw.split(" rc=", 1)
+            name = left[len("phase=") :]
+            if name == "" or not right.isascii() or not right.isdigit():
+                raise PlanError("phase_log")
+            phase = name
+            returncode = int(right, 10)
+            lines = []
+            continue
+        if phase is None or "=" not in raw:
+            raise PlanError("phase_log")
+        lines.append(raw)
+    if phase is not None:
+        raise PlanError("phase_log")
+    return rows
+
+
+def _summary_rows() -> list[tuple[str, list[str], int]]:
+    """Grade phase-rows.txt. An absent file is an empty grade, not the fixture."""
+    logged = _read_phase_rows(_log_dir() / "phase-rows.txt")
+    rows = [] if logged is None else logged
+    print(f"observed_phases={len(rows)}")
+    return rows
+
+
 def _emit_overall(harness: object, rows: list[tuple[str, list[str], int]]) -> str:
     """Print the harness overall grade. PASS is a failed grade."""
     grade = harness.overall_grade(rows, ds_wired=False)  # type: ignore[attr-defined]
@@ -472,6 +523,7 @@ def _run_phases(name: str, harness: object) -> list[tuple[str, list[str], int]]:
             raise PlanError(f"phase_{phase}")
         rows.append((phase, lines, completed.returncode))
         _append_log("phases.txt", f"phase={phase} outcome=accepted\n")
+        _append_phase_row(phase, lines, completed.returncode)
     if compares_seen != 2:
         raise PlanError("harness_phase_count")
     return rows
@@ -651,8 +703,8 @@ def main(argv: list[str]) -> int:
             except (ImportError, OSError, RuntimeError) as exc:
                 print(type(exc).__name__, file=sys.stderr)
                 raise PlanError("harness_import") from exc
-            # Empty rows. green_full_rows() is a unit fixture, not a boot.
-            grade = _emit_overall(harness, [])
+            # Absent phase-rows.txt grades nothing. Do not call green_full_rows().
+            grade = _emit_overall(harness, _summary_rows())
             if grade != "INCOMPLETE":
                 raise PlanError("overall")
             _write_job_output(text, grade)

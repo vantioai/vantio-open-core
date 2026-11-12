@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import re
 import subprocess
@@ -362,6 +363,8 @@ class Stage4PlanTests(unittest.TestCase):
             self.assertNotIn("compare=PASS", completed.stdout)
             self.assertNotRegex(completed.stdout, r"(?m)^OVERALL PASS$")
             self.assertIn("live_enforcement=NOT_PROVEN", completed.stdout)
+            self.assertIn("observed_phases=0", completed.stdout)
+            self.assertNotIn("green_full_rows", inspect.getsource(stage4_drive._summary_rows))
             output = Path(tmp) / "github-output.txt"
             env["GITHUB_OUTPUT"] = str(output)
             completed = subprocess.run(
@@ -376,6 +379,61 @@ class Stage4PlanTests(unittest.TestCase):
         self.assertIn("overall=INCOMPLETE", recorded)
         self.assertIn(stage4_plan.DS_HOLD, recorded)
         self.assertNotIn("overall=PASS", recorded)
+
+    def test_summary_grades_the_observed_log_not_the_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DS_REF": "cursor/redteam-holds-8374",
+                    "RUN_GO": "run-go-ok",
+                    "HARNESS_CANDIDATES": str(ROOT),
+                    "STAGE4_LOG_DIR": tmp,
+                }
+            )
+            env.pop("GCP_LAB_EXECUTE", None)
+            log = Path(tmp) / "phase-rows.txt"
+            log.write_text(
+                "phase=compare rc=0\ncompare=PASS\n.\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "summary"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("observed_phases=1", completed.stdout)
+            self.assertIn("OVERALL INCOMPLETE", completed.stdout)
+            self.assertNotIn("compare=PASS", completed.stdout)
+            self.assertNotIn("OVERALL PASS", completed.stdout)
+            mutated = log.read_text(encoding="utf-8").replace("compare=PASS", "compare=REFUSED_LSM", 1)
+            self.assertNotEqual(mutated, log.read_text(encoding="utf-8"))
+            log.write_text(mutated, encoding="utf-8")
+            mutated_run = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "summary"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(mutated_run.returncode, 0, mutated_run.stderr)
+            self.assertIn("observed_phases=1", mutated_run.stdout)
+            self.assertIn("OVERALL INCOMPLETE", mutated_run.stdout)
+            broken = Path(tmp) / "phase-rows.txt"
+            broken.write_text("phase=compare rc=0\ncompare=PASS\n", encoding="utf-8")
+            refused = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "summary"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn("phase_log", refused.stderr)
+        self.assertNotIn("OVERALL", refused.stdout)
 
     def test_unbooted_debs_do_not_create_a_vm(self) -> None:
         self.assertFalse(stage4_plan.deb_boot_observed(None))
