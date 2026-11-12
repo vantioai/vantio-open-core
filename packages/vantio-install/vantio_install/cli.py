@@ -13,7 +13,8 @@ from vantio_install.engine import apply, plan, rollback, status, uninstall, veri
 from vantio_install.errors import InstallError
 from vantio_install.gates import command_payload
 from vantio_install.one_command import run_one_command
-from vantio_install.self_serve import run_enroll, run_fetch, run_host_prep, run_unenroll
+from vantio_install.license_token import PackagedLicenseTrustError
+from vantio_install.self_serve import refused_packaged_trust, run_enroll, run_fetch, run_host_prep, run_unenroll
 from vantio_install.util import now_et
 
 
@@ -144,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
         return constants.EXIT_USAGE
     try:
         code, payload = command(_ctx(args))
+    except PackagedLicenseTrustError:
+        code, payload = refused_packaged_trust(args.command, transaction_id=args.transaction_id)
     except InstallError as exc:
         payload = _error_payload(args.command, args.transaction_id, exc.state, str(exc))
         if exc.failure_class:

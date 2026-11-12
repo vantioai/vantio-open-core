@@ -13,7 +13,7 @@ from vantio_install.enroll import normalize_unit, remove_dropin, write_dropin
 from vantio_install.errors import InstallError
 from vantio_install.gates import command_payload, require_live_gates
 from vantio_install.host_prep import prepare
-from vantio_install.license_token import store_license, verify_token
+from vantio_install.license_token import PackagedLicenseTrustError, store_license, verify_token
 from vantio_install.server_root import server_root
 from vantio_install.util import read_json, redact_text, write_json
 
@@ -29,7 +29,10 @@ def run_fetch(ctx: dict) -> tuple[int, dict]:
         return _fail("fetch", "LICENSE_FILE_MISSING", "The license file could not be read.", constants.EXIT_USAGE)
     if not token:
         return _fail("fetch", "LICENSE_MISSING", "The license file is empty.", constants.EXIT_USAGE)
-    checked = verify_token(token)
+    try:
+        checked = verify_token(token)
+    except PackagedLicenseTrustError:
+        return refused_packaged_trust("fetch", transaction_id=ctx.get("transaction_id"))
     if not checked["ok"]:
         return _license_failure("fetch", checked)
     bundle_raw = ctx.get("bundle_dir")
@@ -189,6 +192,17 @@ def _license_failure(command: str, checked: dict) -> tuple[int, dict]:
 def _fail(command: str, reason: str, message: str, code: int, **extra: object) -> tuple[int, dict]:
     safe = redact_text(message)
     return code, command_payload(command, "FAILED_SAFE", safe, reason=reason, **extra)
+
+
+def refused_packaged_trust(command: str, **extra: object) -> tuple[int, dict]:
+    """Packaged trust is unusable. The command stops before it trusts a key."""
+    return _fail(
+        command,
+        "LICENSE_TRUST_INVALID",
+        "The packaged license trust is refused.",
+        constants.EXIT_FAILED_SAFE,
+        **extra,
+    )
 
 
 def _attach_host_prep(ctx: dict, prepared: dict, calls: list[list[str]]) -> None:

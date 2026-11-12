@@ -4,8 +4,17 @@ A token is ``vl1.`` + base64url(payload JSON) + ``.`` + base64url(Ed25519
 signature over the ASCII bytes ``vl1.`` + payload_b64). The signature covers
 those exact characters. The payload is not re-serialized before the check.
 
-The packaged trust file ships empty. Tests inject keys through
+The packaged trust file holds one live Ed25519 public key for kid
+``lic-live-2026-10``. If any packaged row is not mode ``live``, the
+whole packaged trust is refused. A row that is not an object is
+refused as ``PACKAGED_LICENSE_ROW``. ``_parse_key`` rejects any row that still has a
+``placeholder`` field, and it rejects an empty ``public_key_b64``.
+A kid, algorithm, mode, or public key that is not a string is refused.
+Tests inject keys through
 ``license_trust_override``. The command line cannot set that override.
+Nothing in this module reads an environment variable or fetches a URL.
+Two trust rows with the same kid fail closed as ``DUPLICATE_KID``.
+The first row is not used.
 The accepted token is stored at mode 0600 and is never copied into a
 health record. Health keeps sub, qty, interval, exp, and kid.
 """
@@ -53,11 +62,25 @@ def public_license_fields(payload: dict) -> dict:
     return {key: payload[key] for key in _PUBLIC_FIELDS}
 
 
+class PackagedLicenseTrustError(Exception):
+    """The packaged license trust file is refused (a row is not an object or not mode live)."""
+
+
 def packaged_license_keys() -> tuple[dict, ...]:
     if not _PACKAGED.is_file():
         return ()
     try:
-        return keys_from_mapping(json.loads(_PACKAGED.read_text(encoding="utf-8")))
+        payload = json.loads(_PACKAGED.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return ()
+    if isinstance(payload, dict) and isinstance(payload.get("keys"), list):
+        for item in payload["keys"]:
+            if not isinstance(item, dict):
+                raise PackagedLicenseTrustError("PACKAGED_LICENSE_ROW")
+            if item.get("mode") != "live":
+                raise PackagedLicenseTrustError("PACKAGED_LICENSE_MODE")
+    try:
+        return keys_from_mapping(payload)
     except (OSError, ValueError, json.JSONDecodeError):
         return ()
 
@@ -120,9 +143,12 @@ def verify_token(token: str, *, keys: tuple[dict, ...] | None = None, now: int |
             body["exp"] = payload.get("exp")
         return body
     kid = payload["kid"]
-    pinned = next((item for item in trust if item["kid"] == kid), None)
-    if pinned is None:
+    matches = [item for item in trust if item["kid"] == kid]
+    if not matches:
         return _refused("UNKNOWN_KID")
+    if len(matches) != 1:
+        return _refused("DUPLICATE_KID")
+    pinned = matches[0]
     if pinned["mode"] != payload["mode"]:
         return _refused("MODE_MISMATCH")
     signed = b"vl1." + parts[1].encode("ascii")
@@ -164,14 +190,21 @@ def read_stored_license(path: Path) -> str | None:
 def _parse_key(item: object) -> dict | None:
     if not isinstance(item, dict):
         return None
+    # The placeholder field is the empty live slot. Any row that still
+    # has it is refused, including one whose public_key_b64 is 32 bytes.
+    if "placeholder" in item:
+        return None
     kid = item.get("kid")
     mode = item.get("mode")
+    alg = item.get("alg")
     raw_b64 = item.get("public_key_b64")
-    if item.get("alg") != "Ed25519":
+    if not isinstance(alg, str) or alg != "Ed25519":
         return None
     if not isinstance(kid, str) or not kid or any(char.isspace() for char in kid):
         return None
-    if mode not in {"test", "live"} or not isinstance(raw_b64, str):
+    if not isinstance(mode, str) or mode not in {"test", "live"}:
+        return None
+    if not isinstance(raw_b64, str):
         return None
     try:
         raw = base64.b64decode(raw_b64, validate=True)

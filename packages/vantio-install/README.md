@@ -30,3 +30,21 @@ Every command prints one JSON object. `proof_state` stays `NOT_PROVED` in this p
 A live change needs `VANTIO_INSTALL_ALLOW_LIVE=1` and `--i-accept-live-mutations` together, plus `--plan` and `--plan-sha256`, on `apply`, `rollback`, or `uninstall`. The installer then runs an allowlisted observe-only command list and checks the host again before it treats the step as verified.
 
 The supported host for this contract is Ubuntu 24.04 LTS on x86_64, with cgroup v2, kernel BTF, bpffs, tracefs at `/sys/kernel/tracing`, Docker, AppArmor, and Node.js 18 or newer.
+
+## Production public key
+
+The installer reads only `vantio_install/trust/license-public-keys.json`. That file is packaged with the installer. There is no environment override, no command-line override, and no fetch from a URL.
+
+The row is kid `lic-live-2026-10`, algorithm `Ed25519`, mode `live`. `public_key_b64` is `l7QzrGpjE1xQZbJNBVasOSFYTJyfiZh3espcPi2YvyM=`. That is standard padded base64 of the 32 raw public-key bytes. The fingerprint is the SHA-256 of those 32 decoded raw bytes: `dbd00b512f9351781f27d11c6f80296815593c3fa6000c07e96a3b916ee666be`.
+
+The loader rejects a row that still has a `placeholder` field, and it rejects an empty `public_key_b64`. Base64url is rejected. A PEM private key is rejected. A 64-byte value is rejected. If any packaged row is not mode `live`, the whole packaged trust is refused.
+
+From this package directory, run:
+
+```bash
+python3 scripts/check-license-trust.py
+```
+
+The command prints `PASS` or `FAIL` on its own line. A failure names the reason on stderr and does not print the key. `PASS` means the file has exactly one live row with kid `lic-live-2026-10`, algorithm `Ed25519`, and mode `live`, and that `public_key_b64` is standard padded base64 of 32 bytes. Two rows with the same kid are refused. `verify_token` returns `DUPLICATE_KID` and does not use the first row.
+
+`proof_state` stays `NOT_PROVED`. Rebuild, re-seal and publish remain a later release step. This change is the key step only.
