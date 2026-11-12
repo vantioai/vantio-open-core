@@ -1,0 +1,146 @@
+---
+name: GCP stage 4 lab
+
+# workflow_dispatch only. Do not add push, pull_request, or schedule.
+# live_enforcement stays NOT_PROVEN until a person runs this and the grade passes.
+# This file does not dispatch itself.
+#
+# Workload identity stays in gcp-lab-cost-gate.yml. That file's provider,
+# service account, and gcp-lab environment are the ones this lab uses.
+# This file does not declare an environment and does not authenticate.
+# A dispatch from a branch still calls that file at main, so the stage 4
+# jobs run only after this change is on main.
+
+on:
+  workflow_dispatch:
+    inputs:
+      soak_minutes:
+        description: Health-check minutes after the harness. 1 to 240.
+        required: false
+        default: "60"
+        type: string
+      run_go:
+        description: Founder go. Masked. Empty refuses before any VM.
+        required: false
+        default: ""
+        type: string
+      host_name:
+        description: Guest host name. Masked. Empty refuses before any VM.
+        required: false
+        default: ""
+        type: string
+      ds_ref:
+        description: >-
+          Phantom Engine ref or sha for DS checks from PR 85.
+          Recorded only. Not fetched.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-stage4-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  GCP_LAB_PROJECT: vantio-lab-oct08
+  GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
+
+jobs:
+  guard:
+    name: Refuse before any VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout this workflow
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Mask dispatch inputs
+        env:
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RUN_GO" ]; then
+            printf '%s\n' "::add-mask::${RUN_GO}"
+          fi
+          if [ -n "$HOST_NAME" ]; then
+            printf '%s\n' "::add-mask::${HOST_NAME}"
+          fi
+
+      - name: Guard
+        env:
+          SOAK_MINUTES: ${{ inputs.soak_minutes }}
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+          DS_REF: ${{ inputs.ds_ref }}
+          HARNESS_CANDIDATES: .
+        run: |
+          set -euo pipefail
+          python3 scripts/lab/stage4_plan.py workflow-triggers \
+            .github/workflows/gcp-stage4-lab.yml
+          python3 scripts/lab/stage4_plan.py wif-reuse \
+            .github/workflows/gcp-stage4-lab.yml
+          python3 scripts/lab/stage4_drive.py guard
+
+  fetch-pe:
+    name: Fetch Phantom Engine tip
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      pe_git_sha: ${{ steps.pe.outputs.sha }}
+    steps:
+      - name: Checkout Phantom Engine default branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: vantioai/vantio-phantom-engine
+          token: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+          persist-credentials: false
+          path: pe-src
+          fetch-depth: 1
+
+      - name: Phantom Engine tip
+        id: pe
+        run: |
+          set -euo pipefail
+          git -C pe-src remote set-url origin \
+            https://github.com/vantioai/vantio-phantom-engine.git
+          sha=$(git -C pe-src rev-parse HEAD)
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "pe_git_sha" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          tar -C pe-src --exclude .git --exclude target \
+            -cf "${RUNNER_TEMP}/pe-src.tar" .
+
+      - name: Upload the read-only tree
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stage4-pe-src-${{ github.run_id }}
+          path: ${{ runner.temp }}/pe-src.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  lab:
+    name: Run stage 4 inside the cost gate
+    needs: [guard, fetch-pe]
+    if: needs.guard.result == 'success' && needs.fetch-pe.result == 'success'
+    uses: vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      stage4: "1"
+      soak_minutes: ${{ inputs.soak_minutes }}
+      run_go: ${{ inputs.run_go }}
+      host_name: ${{ inputs.host_name }}
+      ds_ref: ${{ inputs.ds_ref }}
+      pe_git_sha: ${{ needs.fetch-pe.outputs.pe_git_sha }}

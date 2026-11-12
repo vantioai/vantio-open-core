@@ -60,6 +60,22 @@ on:
         required: false
         type: string
         default: ""
+      stage4:
+        description: 1 runs the stage 4 lab jobs in this file. Empty skips them.
+        required: false
+        type: string
+        default: ""
+      soak_minutes:
+        description: Stage 4 health-check minutes. Ignored unless stage4 is 1.
+        required: false
+        type: string
+        default: "60"
+      ds_ref:
+        description: >-
+          Stage 4 DS ref or sha. Recorded only. Ignored unless stage4 is 1.
+        required: false
+        type: string
+        default: ""
     outputs:
       expected_oop_usd:
         description: Zero only when the lab cap check passes.
@@ -411,7 +427,8 @@ jobs:
           mkdir -p "$EVIDENCE_DIR"
           vantio run python3 scripts/gcp/lab_auto.py cost-gate | tee "$EVIDENCE_DIR/cost-gate.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); raise SystemExit(0 if d.get("expected_oop_usd")=="0" and d.get("abort") is False else 2)' "$EVIDENCE_DIR/cost-gate.json"
-          export GCP_LAB_GATE_JSON="$(cat "$EVIDENCE_DIR/cost-gate.json")"
+          GCP_LAB_GATE_JSON="$(cat "$EVIDENCE_DIR/cost-gate.json")"
+          export GCP_LAB_GATE_JSON
           vantio run python3 scripts/gcp/enforcement_proof.py run
 
       - name: Remove the OS Login key
@@ -610,3 +627,182 @@ jobs:
           name: optics-observe-gcp-lab-enforcement-proof-teardown-on-failure
           path: optics-observe-log
           if-no-files-found: warn
+
+  stage4-target:
+    name: Stage 4 ${{ matrix.role }}
+    needs: gate
+    if: >-
+      ${{ inputs.stage4 == '1' && needs.gate.result == 'success' &&
+      needs.gate.outputs.expected_oop_usd == '0' }}
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [debian, ubuntu, refuse]
+    steps:
+      - name: Mask dispatch inputs
+        env:
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RUN_GO" ]; then
+            printf '%s\n' "::add-mask::${RUN_GO}"
+          fi
+          if [ -n "$HOST_NAME" ]; then
+            printf '%s\n' "::add-mask::${HOST_NAME}"
+          fi
+
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+          test "$GCP_LAB_SERVICE_ACCOUNT" = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Download the Phantom Engine tree
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: stage4-pe-src-${{ github.run_id }}
+          path: pe-pack
+
+      - name: Unpack the Phantom Engine tree
+        run: |
+          set -euo pipefail
+          mkdir -p pe-src
+          tar -C pe-src -xf pe-pack/pe-src.tar
+          test -f pe-src/Cargo.toml
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Run the lab role
+        env:
+          GCP_LAB_EXECUTE: "1"
+          ROLE: ${{ matrix.role }}
+          SOAK_MINUTES: ${{ inputs.soak_minutes }}
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
+          DS_REF: ${{ inputs.ds_ref }}
+          PE_ROOT: pe-src
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
+          HARNESS_CANDIDATES: .
+        run: python3 scripts/lab/stage4_drive.py target
+
+      - name: DS hold
+        if: always()
+        env:
+          DS_REF: ${{ inputs.ds_ref }}
+          RUN_GO: ${{ inputs.run_go }}
+        run: |
+          set -euo pipefail
+          python3 scripts/lab/stage4_plan.py ds-hold | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stage4-${{ matrix.role }}-${{ github.run_id }}
+          path: stage4-logs/
+          if-no-files-found: warn
+          retention-days: 5
+
+  stage4-teardown:
+    name: Delete this stage 4 run
+    needs: stage4-target
+    if: ${{ always() && inputs.stage4 == '1' }}
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 20
+    steps:
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Delete labelled resources
+        env:
+          GCP_LAB_EXECUTE: "1"
+        run: python3 scripts/lab/stage4_drive.py teardown
+
+  stage4-verify:
+    name: Assert this stage 4 run is gone
+    needs: stage4-teardown
+    if: ${{ always() && inputs.stage4 == '1' }}
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 15
+    steps:
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: List by label and fail if any remain
+        env:
+          GCP_LAB_EXECUTE: "1"
+        run: python3 scripts/lab/stage4_drive.py verify
