@@ -2,8 +2,8 @@
 """Stage a lab-only trust pair and a pin-checked installer bundle.
 
 Private keys stay in memory and are not written. Public files are labelled
-LAB_NONPROD and are not a production signing root. The packaged trust files
-in vantio-install stay empty. A file is copied into the bundle only when its
+LAB_NONPROD and are not a production signing root. This script does not
+write the packaged trust files. A file is copied into the bundle only when its
 sha256 is the frozen pin. A different file is not renamed onto that pin.
 """
 

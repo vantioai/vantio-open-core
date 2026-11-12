@@ -1,4 +1,4 @@
-"""Lab-scoped trust reaches observe HEALTHY. Packaged trust stays empty."""
+"""Lab-scoped trust reaches observe HEALTHY. Packaged test trust stays empty."""
 
 from __future__ import annotations
 
@@ -55,11 +55,17 @@ class LabScopeTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self._env)
 
-    def test_packaged_trust_stays_empty_and_a_wrong_file_is_not_pinned(self) -> None:
-        artifact = json.loads((PACKAGE / "vantio_install" / "trust" / "artifact-public-keys.json").read_text())
+    def test_packaged_test_trust_stays_empty_and_a_wrong_file_is_not_pinned(self) -> None:
+        artifact_path = PACKAGE / "vantio_install" / "trust" / "artifact-public-keys.json"
+        before = artifact_path.read_text(encoding="utf-8")
+        artifact = json.loads(before)
         dev = json.loads((PACKAGE / "vantio_install" / "trust" / "dev-public-keys.json").read_text())
-        self.assertEqual(artifact, {"keys": []})
         self.assertEqual(dev, {"keys": []})
+        self.assertEqual(load_artifact_trust(artifact_path), {})
+        self.assertGreaterEqual(len(artifact["keys"]), 1)
+        for item in artifact["keys"]:
+            self.assertEqual(item["key_class"], "production")
+            self.assertTrue(str(item["key_id"]).startswith("prod-artifact-"))
         self.assertEqual(constants.FROZEN_PINS["pe_archive_sha256"], PIN)
         stage = _stage()
         with tempfile.TemporaryDirectory() as tmp:
@@ -85,10 +91,7 @@ class LabScopeTests(unittest.TestCase):
             for path in staged.rglob("*"):
                 if path.is_file():
                     self.assertNotIn(b"-----BEGIN ", path.read_bytes())
-            self.assertEqual(
-                json.loads((PACKAGE / "vantio_install" / "trust" / "artifact-public-keys.json").read_text()),
-                {"keys": []},
-            )
+            self.assertEqual(artifact_path.read_text(encoding="utf-8"), before)
 
     def test_lab_scope_is_ignored_unless_the_environment_names_it(self) -> None:
         private = Ed25519PrivateKey.generate()
