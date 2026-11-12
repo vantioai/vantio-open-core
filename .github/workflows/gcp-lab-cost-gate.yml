@@ -111,6 +111,13 @@ jobs:
             workflow_dispatch|workflow_call) ;;
             *) echo "unexpected event $GITHUB_EVENT_NAME" >&2; exit 1 ;;
           esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-enforcement-proof.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
+          esac
 
       - name: Refuse static GCP keys
         env:
@@ -645,6 +652,20 @@ jobs:
       matrix:
         role: [debian, ubuntu, refuse]
     steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "event" >&2; exit 1 ;;
+          esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
+          esac
+
       - name: Refuse static GCP keys
         run: |
           set -euo pipefail

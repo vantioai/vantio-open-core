@@ -7,6 +7,10 @@ Ported from vantio-phantom-engine draft pull request 89, branch
 `7fd76a673d4ad06b9c74e8257585d716ea7305ea`.
 live_enforcement is NOT_PROVEN. This file does not record a GCP run.
 No VM was created or removed. The workflow was not dispatched.
+`5c97e04d` stays in this branch. Its committer was `zach@vantio.ai`
+while the signature key is the Cursor key, so GitHub reports
+`unknown_key`. This change does not amend, rebase, or force-push that
+commit. A squash merge would be a new commit. That choice is Zach's.
 
 The git SHA for the commands below is the HEAD named in the pull request
 body. Those commands were run on the commit that contains this file.
@@ -47,9 +51,18 @@ is before checkout and before the private token. `stage4-teardown` and
 they accept `GITHUB_WORKFLOW_REF` of either `gcp-lab-cost-gate.yml` or
 `gcp-stage4-lab.yml` at `refs/heads/main`, with event `workflow_dispatch`
 or `workflow_call`. That step is first, before checkout and before
-workload identity. This run did not read the live IAM condition and did
-not change IAM, the provider, the service account, the environment, or
-`lab_auto.WORKFLOWS`.
+workload identity. The cost-gate `gate` job also checks
+`GITHUB_WORKFLOW_REF` before checkout and before auth. Its allowlist is
+the file itself plus the three workflows that already call it:
+`gcp-lab-enforcement-proof.yml`, `gcp-lab-provision.yml`, and
+`gcp-stage4-lab.yml`, each at `refs/heads/main`. `stage4-target` checks
+the ref before checkout and before auth, and that allowlist is only
+`gcp-stage4-lab.yml` at `refs/heads/main`. This run did not dispatch, so
+it did not observe which value GitHub stores in `GITHUB_WORKFLOW_REF`
+inside a called workflow. This run did not read the live IAM condition
+and did not change IAM, the provider, the service account, the
+environment, or `lab_auto.WORKFLOWS`. Merging still widens the
+path-matched cost-gate file. That widening is a decision for Zach.
 
 The Phantom Engine checkout is draft-only. It depends on the secret name
 `W3_LAB_PRIVATE_BUNDLE_TOKEN`. That token is slated for revocation. This
@@ -72,8 +85,16 @@ userspace. They are not a boot of kernel `6.12.116+deb13-cloud-amd64`
 or `7.0.0-1016-gcp`. `ubuntu:24.04` is not the stage 4 build host. No
 boot has shown a 24.04 binary runs on these guests. The installer pin
 read on 2026-11-12 is cargo-binstall `v1.27.0` and bpf-linker `0.13.0`.
-This run did not start Docker and did not build the loader. The guest
-script does not install packages.
+The script records sha256 `b2e4b70fcddc5bd6fd90c5cf8dc17b4cf0ea54a3db16c65ee0307f42c9bd3187`
+for the binstall tarball and sha256
+`0e9b2b30f68898177f1cb6f0ecbfa909a82479473a49a0ef66529fd088e3e410` for
+`bpf-linker-x86_64-unknown-linux-musl.tar.zst`. `sha256sum -c` runs
+before either archive is extracted. The bpf-linker hash was computed
+twice on the same download and matched. The GitHub asset size was
+27990131 bytes. This run did not start Docker and did not build the
+loader. Those checks do not make the container a match for the guest
+kernel. No binary was booted on either pin. The guest script does not
+install packages.
 
 The harness used in this repo is `scripts/gcp/enforcement_proof.py`.
 `scripts/gcp/guest_phases.sh` and `scripts/gcp/proof_grade.py` are not
@@ -103,9 +124,11 @@ event name fails the guard. The caller `on:` block is still only
 
 `phase_accepted` stays the grade. `live_enforcement` stays `NOT_PROVEN`
 when a phase is accepted. `fetch_offline_debs.sh` is an Ubuntu 24.04
-snapshot. A non-refuse role with `GCP_LAB_EXECUTE=1` raises `deb_boot`
-before any create unless `STAGE4_DEB_BOOT` is `debian13-and-ubuntu2604`.
-Nothing in this tree sets that variable. The summary command grades
+snapshot. Every role, including `refuse`, raises `deb_boot` before any create
+unless `STAGE4_DEB_BOOT` is `debian13-and-ubuntu2604`. Nothing in this
+tree sets that variable. The uname strings are still the package-page
+values. Replacing them takes a boot of each pin. That boot is a
+decision for Zach. This run did not replace them. The summary command grades
 `stage4-logs/phase-rows.txt` when that file is present. Each record is
 one observed phase, written only after `phase_accepted`. When the file
 is absent, the summary prints the hold and `OVERALL INCOMPLETE` and
@@ -183,7 +206,7 @@ a missing harness, or `deb_boot`, not the DS step.
 | `python3 -m unittest discover -s scripts/lab -q` | 0 (143 tests, no skip lines) |
 | `/tmp/actionlint` on `gcp-stage4-lab.yml` and `gcp-lab-cost-gate.yml` (1.7.12) | 0 |
 | `yamllint` on `gcp-stage4-lab.yml`, line-length 120, truthy and comments disabled | 0 |
-| `python3 scripts/gcp/test_enforcement_proof.py -q` | 0 (24 tests) |
+| `python3 scripts/gcp/test_enforcement_proof.py -q` | 0 (25 tests) |
 | `python3 scripts/gcp/test_lab_auto.py -q` | 0 (22 tests) |
 | `python3 scripts/ci/test_optics_observe_ci.py -q` | 0 (5 tests) |
 | `node --test scripts/release/ws11/ws11.test.mjs` | 0 (14 tests, 0 skipped) |

@@ -465,6 +465,13 @@ class CreateAndBuildTests(unittest.TestCase):
         self.assertIn("e2-standard-2", text)
         self.assertIn("binstall_tag=v1.27.0", text)
         self.assertIn("bpf_linker_version=0.13.0", text)
+        self.assertIn("b2e4b70fcddc5bd6fd90c5cf8dc17b4cf0ea54a3db16c65ee0307f42c9bd3187", text)
+        self.assertIn("0e9b2b30f68898177f1cb6f0ecbfa909a82479473a49a0ef66529fd088e3e410", text)
+        self.assertNotIn("cargo binstall --no-confirm", text)
+        first_check = text.index("sha256sum -c -")
+        second_check = text.index("sha256sum -c -", first_check + 1)
+        self.assertLess(first_check, text.index('tar -C "$HOME/.cargo/bin" -xzf'))
+        self.assertLess(second_check, text.index('tar --zstd -C "$HOME/.cargo/bin" -xf'))
         self.assertNotIn("install-from-binstall-release.sh", text)
         self.assertNotIn("cargo-binstall/main", text)
         with tempfile.TemporaryDirectory() as tmp:
@@ -500,6 +507,32 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertNotEqual(refused.returncode, 0)
             self.assertIn("build_image", refused.stderr)
             self.assertFalse((root / "docker.log").exists())
+
+    def test_flipped_digest_fails_before_extract(self) -> None:
+        digest = hashlib.sha256(b"pin").hexdigest()
+        flipped = digest[:-1] + ("0" if digest[-1] != "0" else "1")
+        self.assertNotEqual(flipped, digest)
+        with tempfile.TemporaryDirectory() as tmp:
+            blob = Path(tmp) / "blob"
+            blob.write_bytes(b"pin")
+            check = "printf '%s  %s\\n' \"$DIGEST\" \"$BLOB\" | sha256sum -c -"
+            good = subprocess.run(
+                ["bash", "-c", check],
+                capture_output=True,
+                text=True,
+                env={"DIGEST": digest, "BLOB": str(blob)},
+                check=False,
+            )
+            bad = subprocess.run(
+                ["bash", "-c", check],
+                capture_output=True,
+                text=True,
+                env={"DIGEST": flipped, "BLOB": str(blob)},
+                check=False,
+            )
+        self.assertEqual(good.returncode, 0, good.stderr)
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertNotIn("tar ", check)
 
     def test_missing_manifest_does_not_start_docker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

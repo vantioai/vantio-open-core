@@ -66,6 +66,9 @@ UBUNTU_UNAME = "7.0.0-1016-gcp"
 # fetch_offline_debs.sh is an Ubuntu 24.04 snapshot. It is not green phase
 # evidence on Debian 13 or Ubuntu 26.04 until both guests have booted it.
 # Nothing in this tree sets STAGE4_DEB_BOOT to this token.
+# Every role, including refuse, stays behind this token. The uname
+# strings below are still the package-page values. A boot has to
+# replace them before a dispatch treats them as guest fact.
 DEB_BOOT_TOKEN = "debian13-and-ubuntu2604"
 
 SOAK_DEFAULT = 60

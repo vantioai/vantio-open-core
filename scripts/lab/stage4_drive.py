@@ -569,7 +569,7 @@ def _target(role: str) -> int:
         grade = _emit_overall(dry_harness, [])
         _write_job_output(hold, grade)
         return 0
-    if role != "refuse" and not deb_boot_observed(os.environ.get("STAGE4_DEB_BOOT")):
+    if not deb_boot_observed(os.environ.get("STAGE4_DEB_BOOT")):
         raise PlanError("deb_boot")
     root = harness_root(_candidates(os.environ.get("HARNESS_CANDIDATES", "")))
     if root is None:

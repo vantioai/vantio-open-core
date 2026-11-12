@@ -285,6 +285,23 @@ class Stage4PlanTests(unittest.TestCase):
             self.assertNotIn("${{", line)
         target = doc["jobs"]["stage4-target"]
         names = [step.get("name") for step in target["steps"]]
+        self.assertEqual(names[0], "Require main on vantio-open-core")
+        self.assertLess(names.index("Require main on vantio-open-core"), names.index("Checkout"))
+        self.assertLess(names.index("Require main on vantio-open-core"), names.index("Authenticate with workload identity"))
+        allow = target["steps"][0]["run"]
+        self.assertIn("gcp-stage4-lab.yml@refs/heads/main", allow)
+        self.assertNotIn("gcp-lab-provision.yml", allow)
+        self.assertNotIn("gcp-lab-cost-gate.yml", allow)
+        gate_run = doc["jobs"]["gate"]["steps"][0]["run"]
+        for caller in (
+            "gcp-lab-cost-gate.yml@refs/heads/main",
+            "gcp-lab-enforcement-proof.yml@refs/heads/main",
+            "gcp-lab-provision.yml@refs/heads/main",
+            "gcp-stage4-lab.yml@refs/heads/main",
+        ):
+            self.assertIn(caller, gate_run)
+        narrowed = gate_run.replace("gcp-stage4-lab.yml@refs/heads/main", "gcp-stage4-lab.yml@refs/heads/other", 1)
+        self.assertNotIn("gcp-stage4-lab.yml@refs/heads/main", narrowed)
         self.assertLess(names.index("Refuse static GCP keys"), names.index("Authenticate with workload identity"))
         self.assertLess(names.index("Authenticate with workload identity"), names.index("Run the lab role"))
         self.assertNotIn("apt-get", (ROOT / "scripts" / "lab" / "stage4_guest.sh").read_text(encoding="utf-8"))
@@ -450,17 +467,19 @@ class Stage4PlanTests(unittest.TestCase):
             "GCP_LAB_EXECUTE": "1",
             "PATH": os.environ.get("PATH", ""),
         }
-        completed = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "target"],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-        self.assertEqual(completed.returncode, 2)
-        self.assertIn("deb_boot", completed.stderr)
-        self.assertNotIn("instances", completed.stdout)
-        self.assertNotIn("gcloud", completed.stdout)
+        for role in ("debian", "refuse"):
+            env["ROLE"] = role
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "target"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 2, role)
+            self.assertIn("deb_boot", completed.stderr)
+            self.assertNotIn("instances", completed.stdout)
+            self.assertNotIn("gcloud", completed.stdout)
 
     def test_uname_failure_deletes_the_instance(self) -> None:
         with (
