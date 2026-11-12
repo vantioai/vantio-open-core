@@ -17,7 +17,7 @@ Hold. Zach merges this workflow to `main`, then Zach clicks `workflow_dispatch`.
 | Project | `vantio-lab-oct08` |
 | Zone | `us-central1-a` |
 | Guest | Ubuntu 24.04, image family `ubuntu-2404-lts-amd64`, machine `e2-micro`, no public IP, no guest service account, OS Login, IAP |
-| Git tip | `864289cb2c9c4135d74233c74c6655087de3f20d` |
+| Git tip | One full 40-character lowercase hex commit from `scripts/gcp/pe-git-sha-allowlist.txt`: `864289cb2c9c4135d74233c74c6655087de3f20d` or `b3567a2aa3d705e8214e1cc671d30c31b9ac1c98`. Every allowlisted commit must be an ancestor of Phantom Engine `main`. |
 | Lab directory | `/var/lib/vantio-enforcement-proof` |
 
 `gcp-lab-provision.yml` is the wrong path. Its `seal` input is 64 hex. This tip is 40 hex and is not a seal. Do not type the tip into that workflow.
@@ -28,7 +28,7 @@ Zach clicks **GCP lab enforcement proof** on `main`.
 
 | Input | What to enter |
 | --- | --- |
-| `pe_git_sha` | `864289cb2c9c4135d74233c74c6655087de3f20d`. Any other value fails before a VM. |
+| `pe_git_sha` | One full 40-character lowercase hex commit from `scripts/gcp/pe-git-sha-allowlist.txt`. Any other value fails before a VM. The build job checks that commit out. The proof JSON records that job's `git rev-parse HEAD`. `reboot-post` fails unless that HEAD matches the build sha stored on the instance. |
 | `run_go` | Zach's own-words run go. The log masks it and does not print it. |
 | `host_name` | The guest `hostname -s` Zach allows, 3 to 40 lowercase letters, digits, and hyphens. The workflow sets `VANTIO_LAB_HOST` and `VANTIO_LAB_HOST_ALLOWLIST` to that one name. It is masked. |
 | `proof_slice` | `full` (default), `reboot-pre`, or `reboot-post`. |
@@ -46,7 +46,7 @@ The guest proof and the failure delete are a second call of that same file, with
 
 ## What `full` runs
 
-Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit: `cargo build -p vantio-loader --release`. Cargo's workdir is the `phantom-engine` checkout. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. `bpf-linker` is installed the same unpinned way as the Phantom Engine Dockerfile at this tip, so two builds can differ.
+Build happens on the runner, inside an `ubuntu:24.04` container, from the dispatched git tip: `cargo build -p vantio-loader --release`. Cargo's workdir is the `phantom-engine` checkout. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. `bpf-linker` is installed the same unpinned way as the Phantom Engine Dockerfile at this tip, so two builds can differ.
 
 `full` runs these guest phases in this order: compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
 
@@ -93,4 +93,4 @@ Pass and fail lines for council are in the Phantom Engine packet and in `$VANTIO
 
 1. This file is on `main`. A branch dispatch fails the main guard. This pull request does not merge and does not dispatch.
 2. The guest jobs authenticate from `.github/workflows/gcp-lab-cost-gate.yml`. The live provider already allows `vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main`. Zach does not add `gcp-lab-enforcement-proof.yml` for this dispatch. `python3 scripts/gcp/lab_auto.py attribute-condition` still prints a clause for that file. That clause is not required to authenticate the guest jobs.
-3. `W3_LAB_PRIVATE_BUNDLE_TOKEN` can read `vantioai/vantio-phantom-engine` at the pinned commit. The build job uses it in environment `w3-lab-auto`. If it cannot, the build fails before create.
+3. `W3_LAB_PRIVATE_BUNDLE_TOKEN` can read `vantioai/vantio-phantom-engine` at the dispatched git tip. Precheck uses it in environment `w3-lab-auto` for `git ls-remote` and a shallow fetch of that commit. A missing token or a failed fetch stops the workflow before the cost gate, the build, and any VM. The build job uses the same token in the same environment.

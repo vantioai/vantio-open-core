@@ -1,7 +1,9 @@
 name: GCP lab enforcement proof
 
-# Customer-install enforcement proof for Phantom Engine commit
-# 864289cb2c9c4135d74233c74c6655087de3f20d. That value is a git tip, not a seal.
+# Customer-install enforcement proof for one allowlisted Phantom Engine git tip.
+# The tip is the pe_git_sha dispatch input: 40 lowercase hex on
+# scripts/gcp/pe-git-sha-allowlist.txt. That value is a git tip, not a seal.
+# Any other value fails in precheck, before a VM.
 # gcp-lab-provision.yml is the sealed-bundle path and does not run
 # scripts/enforcement_proof_lab.sh.
 #
@@ -26,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       pe_git_sha:
-        description: Phantom Engine git tip. Must be 864289cb2c9c4135d74233c74c6655087de3f20d. Not a seal.
+        description: Phantom Engine git tip. Full 40 lowercase hex on scripts/gcp/pe-git-sha-allowlist.txt. Not a seal.
         required: true
         default: 864289cb2c9c4135d74233c74c6655087de3f20d
         type: string
@@ -75,6 +77,7 @@ jobs:
   precheck:
     name: Check dispatch inputs
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    environment: w3-lab-auto
     timeout-minutes: 15
     steps:
       - name: Require main on vantio-open-core
@@ -172,6 +175,13 @@ jobs:
           vantio run python3 scripts/gcp/enforcement_proof.py precheck
           vantio run python3 scripts/gcp/enforcement_proof.py plan
 
+      - name: Read the requested Phantom Engine commit
+        env:
+          PE_READ_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+          PE_READ_MODE: proof
+          PE_READ_SHA: ${{ inputs.pe_git_sha }}
+        run: bash scripts/gcp/pe_tip_read.sh
+
       - name: Collect Optics observation log
         if: always()
         run: |
@@ -223,6 +233,8 @@ jobs:
     name: Build the loader from the git tip
     needs: [precheck, gate]
     if: needs.precheck.result == 'success' && needs.gate.result == 'success' && needs.gate.outputs.expected_oop_usd == '0' && inputs.proof_slice != 'reboot-post'
+    outputs:
+      head_sha: ${{ steps.record.outputs.head_sha }}
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: w3-lab-auto
     timeout-minutes: 90
@@ -248,11 +260,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout the pinned Phantom Engine commit
+      - name: Refuse a Phantom Engine tip that is not allowlisted
+        env:
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gcp/enforcement_proof.py sha
+
+      - name: Checkout the Phantom Engine commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vantioai/vantio-phantom-engine
-          ref: 864289cb2c9c4135d74233c74c6655087de3f20d
+          ref: ${{ inputs.pe_git_sha }}
           token: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
           persist-credentials: false
           path: phantom-engine
@@ -262,6 +281,47 @@ jobs:
         run: |
           set -euo pipefail
           git -C phantom-engine remote set-url origin https://github.com/vantioai/vantio-phantom-engine.git
+
+      - name: Record the Phantom Engine commit
+        id: record
+        env:
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
+        run: |
+          set -euo pipefail
+          head=$(git -C phantom-engine rev-parse HEAD)
+          if [ "$head" != "$PE_GIT_SHA" ]; then
+            echo "pe_head" >&2
+            exit 1
+          fi
+          if [ -z "${GITHUB_OUTPUT:-}" ]; then
+            echo "pe_output" >&2
+            exit 1
+          fi
+          printf 'head_sha=%s\n' "$head" >> "$GITHUB_OUTPUT"
+          printf 'pe_git_sha=%s\n' "$head"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            printf 'pe_git_sha=%s\n' "$head" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Require an ancestor of Phantom Engine main
+        env:
+          PE_READ_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+        run: |
+          set -euo pipefail
+          head=$(git -C phantom-engine rev-parse HEAD)
+          if [[ ! "$head" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "pe_head" >&2
+            exit 1
+          fi
+          if [ -z "${PE_READ_TOKEN:-}" ]; then
+            echo "pe_read" >&2
+            exit 1
+          fi
+          auth=$(printf 'x-access-token:%s' "$PE_READ_TOKEN" | base64 -w0)
+          unset PE_READ_TOKEN
+          git -C phantom-engine -c "http.extraheader=AUTHORIZATION: basic ${auth}" fetch --no-tags --filter=blob:none --depth=2147483647 origin "+refs/heads/main:refs/remotes/origin/main"
+          unset auth
+          git -C phantom-engine merge-base --is-ancestor "$head" origin/main
 
       - name: Setup Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -306,10 +366,12 @@ jobs:
 
       - name: Build the release loader
         timeout-minutes: 70
+        env:
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
         run: |
           set -euo pipefail
           mkdir -p "${{ runner.temp }}/pe-loader"
-          vantio run bash scripts/gcp/build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine" "${{ runner.temp }}/pe-loader" 864289cb2c9c4135d74233c74c6655087de3f20d
+          vantio run bash scripts/gcp/build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine" "${{ runner.temp }}/pe-loader" "$PE_GIT_SHA"
 
       - name: Upload the loader for the proof job
         if: success()
@@ -367,7 +429,7 @@ jobs:
       contents: read
       id-token: write
     with:
-      pe_git_sha: ${{ inputs.pe_git_sha }}
+      pe_git_sha: ${{ needs.build.outputs.head_sha != '' && needs.build.outputs.head_sha || inputs.pe_git_sha }}
       run_go: ${{ inputs.run_go }}
       host_name: ${{ inputs.host_name }}
       proof_slice: ${{ inputs.proof_slice }}
