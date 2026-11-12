@@ -214,6 +214,14 @@ class Stage4PlanTests(unittest.TestCase):
             doc["env"]["GCP_LAB_SERVICE_ACCOUNT"],
             "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com",
         )
+        enrolled = (
+            "${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && "
+            "'[\"self-hosted\", \"vantio-enrolled\"]' || '\"ubuntu-latest\"') }}"
+        )
+        for job_id in ("stage4-target", "stage4-teardown", "stage4-verify"):
+            job = doc["jobs"][job_id]
+            self.assertEqual(job["runs-on"], enrolled)
+            self.assertEqual(job["steps"][-1]["name"], "Upload Optics observation log")
         self.assertEqual(doc["jobs"]["stage4-target"]["environment"], "gcp-lab")
         self.assertEqual(doc["jobs"]["stage4-target"]["timeout-minutes"], 360)
         self.assertEqual(doc["jobs"]["stage4-teardown"]["timeout-minutes"], 20)
