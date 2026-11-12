@@ -32,7 +32,7 @@ describe("vantio CLI — basic dispatch", () => {
   test("no command prints usage and exits 0", async () => {
     const { code, stdout } = await runCli([]);
     assert.equal(code, 0);
-    assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
+    assert.match(stdout, /Vantio Optics \| Free Observability for AI/);
     assert.doesNotMatch(stdout, /login|whoami|logout/i);
     assert.match(stdout, /vantio discover/);
   });
@@ -60,7 +60,7 @@ describe("vantio CLI — basic dispatch", () => {
     const { code, stderr } = await runCli(["frobnicate"]);
     assert.equal(code, 1);
     assert.match(stderr, /unknown command 'frobnicate'/);
-    assert.match(stderr, /Vantio Optics \| Free Observability for AI Agents/);
+    assert.match(stderr, /Vantio Optics \| Free Observability for AI/);
   });
 
   test("run with no program exits 1", async () => {
@@ -138,7 +138,7 @@ describe("vantio CLI — basic dispatch", () => {
   test("discover --help prints help without requiring a key", async () => {
     const { code, stdout } = await runCli(["discover", "--help"]);
     assert.equal(code, 0);
-    assert.match(stdout, /vantio discover.*AI-agent call history/s);
+    assert.match(stdout, /vantio discover.*AI call history/s);
   });
 
   test("discover with no config stays local and does not ask for a login", async () => {

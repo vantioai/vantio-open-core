@@ -10,8 +10,8 @@ describe("redactPII()", () => {
   });
 
   test("does not rewrite an email", () => {
-    const r = redactPII("contact me at zach@vantio.ai please");
-    assert.equal(r.text, "contact me at zach@vantio.ai please");
+    const r = redactPII("contact me at person@example.com please");
+    assert.equal(r.text, "contact me at person@example.com please");
     assert.deepEqual(r.redactions, []);
   });
 

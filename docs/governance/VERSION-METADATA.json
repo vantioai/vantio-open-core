@@ -6,7 +6,7 @@
     {
       "id": "cli",
       "name": "@vantio/cli",
-      "version": "0.3.26",
+      "version": "0.3.27",
       "manifest": "packages/vantio-cli/package.json",
       "changelog": "docs/governance/changelogs/cli.md",
       "changelog_heading": "## 0.3.26"
@@ -14,7 +14,7 @@
     {
       "id": "node-sdk",
       "name": "@vantio/agent-sdk",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "manifest": "packages/vantio-agent-sdk/package.json",
       "changelog": "docs/governance/changelogs/node-sdk.md",
       "changelog_heading": "## 0.2.4"
@@ -22,12 +22,12 @@
     {
       "id": "python-sdk",
       "name": "vantio-agent-sdk",
-      "version": "3.1.2",
+      "version": "3.1.3",
       "manifest": "packages/vantio-agent-sdk-py/pyproject.toml",
       "also": [
         {
           "file": "packages/vantio-agent-sdk-py/vantio/__init__.py",
-          "contains": "__version__ = \"3.1.2\""
+          "contains": "__version__ = \"3.1.3\""
         }
       ],
       "changelog": "packages/vantio-agent-sdk-py/CHANGELOG.md",
@@ -36,7 +36,7 @@
     {
       "id": "optics-mcp",
       "name": "@vantio/optics-mcp",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "manifest": "packages/vantio-optics-mcp/package.json",
       "changelog": "docs/governance/changelogs/optics-mcp.md",
       "changelog_heading": "## 0.1.2"

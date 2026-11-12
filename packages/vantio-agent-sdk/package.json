@@ -1,6 +1,6 @@
 {
   "name": "@vantio/agent-sdk",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Vantio Optics Node SDK — shield() for Sight Loop observe. Metadata only; no prompts. Upgrade path to Phantom Engine and Enterprise.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
@@ -41,7 +41,7 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && tsc -p tsconfig.types.json && node scripts/postbuild.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
