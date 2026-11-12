@@ -17,9 +17,9 @@ from pathlib import Path
 ALLOWED_PROJECT = "vantio-lab-oct08"
 ZONE = "us-central1-a"
 MACHINE_TYPE = "e2-standard-2"
-# 10 GB is the published image minimum. The release build also needs a
-# nightly toolchain and cargo target directory, so the boot disk is 20 GB.
-DISK_GB = "20"
+# The loader is built on the runner. The boot disk stays at the 10 GB
+# image minimum used by the existing lab plan.
+DISK_GB = "10"
 DISK_TYPE = "pd-standard"
 NETWORK = "vantio-lab-offline"
 SUBNET = "vantio-lab-offline-usc1"
@@ -67,17 +67,27 @@ HOST_RE = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
 RUN_ID_RE = re.compile(r"^[0-9]{1,20}$")
 ALLOWED_EVENTS = frozenset({"workflow_dispatch", "workflow_call"})
 
+# The only harness file in this repo. guest_phases.sh and proof_grade.py
+# are not required and are not in this tree.
 HARNESS_FILES = ("scripts/gcp/enforcement_proof.py",)
+# No caller-selected checkout. An empty ref means this repo's checkout.
+HARNESS_REF_ALLOWLIST = frozenset({""})
 
-REFUSAL_LINES = (
+REFUSAL_FIELDS = (
     "INSTALL_ENFORCEMENT_READINESS_BLOCKED",
     "bpf_lsm_inactive",
-    "NOT ENFORCING",
 )
+REFUSAL_PHRASE = ("NOT", "ENFORCING")
 
 STATIC_CREDENTIAL_KEYS = (
     "GOOGLE_APPLICATION_CREDENTIALS",
     "GCP_SA_KEY",
+    "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE",
+)
+# google-github-actions/auth exports these two. They are workload-identity
+# files, not a caller-supplied key, once that action has run.
+AUTH_EXPORTED_KEYS = (
+    "GOOGLE_APPLICATION_CREDENTIALS",
     "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE",
 )
 
@@ -113,7 +123,7 @@ def require_project(project: str) -> None:
 
 def require_event(name: str | None) -> None:
     if name is None or name == "":
-        return
+        raise PlanError("event")
     if name not in ALLOWED_EVENTS:
         raise PlanError("event")
 
@@ -130,10 +140,19 @@ def require_host_name(value: str) -> None:
         raise PlanError("host_name")
 
 
-def require_no_static_creds(env: dict[str, str]) -> None:
+def require_no_static_creds(env: dict[str, str], *, after_auth: bool = False) -> None:
+    skipped = AUTH_EXPORTED_KEYS if after_auth else ()
     for key in STATIC_CREDENTIAL_KEYS:
+        if key in skipped:
+            continue
         if env.get(key, "").strip():
             raise PlanError("static_credentials")
+
+
+def require_harness_ref(ref: str) -> None:
+    """Reject a caller-selected harness checkout. Empty is the allowlist."""
+    if ref not in HARNESS_REF_ALLOWLIST:
+        raise PlanError("harness_ref")
 
 
 def image_matches(metadata_image: str, image_name: str) -> bool:
@@ -145,11 +164,33 @@ def uname_matches(actual: str, expected: str) -> bool:
     return actual == expected
 
 
-def refusal_holds(text: str, pin_created: bool) -> bool:
-    """The loader refused LSM startup and did not leave a new persist pin."""
-    if pin_created:
+def log_fields(text: str) -> list[str]:
+    return text.split()
+
+
+def phrase_in_fields(fields: list[str], phrase: tuple[str, ...]) -> bool:
+    width = len(phrase)
+    return any(tuple(fields[index : index + width]) == phrase for index in range(len(fields) - width + 1))
+
+
+def new_vantio_programs(before: list[str], after: list[str]) -> list[str]:
+    """Lines that appeared after the loader and name a vantio program."""
+    if any(line.strip() == "listing=unavailable" for line in before + after):
+        return ["listing=unavailable"]
+    fresh = [line for line in after if line not in before]
+    return [line for line in fresh if "vantio" in line]
+
+
+def refusal_holds(text: str, loader_rc: int, before: list[str], after: list[str]) -> bool:
+    """Non-zero loader, whole-field tokens, and no new vantio program."""
+    if loader_rc == 0 or not text.strip():
         return False
-    return all(line in text for line in REFUSAL_LINES)
+    fields = log_fields(text)
+    if any(token not in fields for token in REFUSAL_FIELDS):
+        return False
+    if not phrase_in_fields(fields, REFUSAL_PHRASE):
+        return False
+    return not new_vantio_programs(before, after)
 
 
 def enforcement_claim() -> str:
@@ -262,7 +303,9 @@ def create_argv(run_id: str, role: str, startup_script: str) -> list[str]:
         f"--image-project={spec['image_project']}",
         f"--boot-disk-size={DISK_GB}GB",
         f"--boot-disk-type={DISK_TYPE}",
+        f"--boot-disk-name={name}",
         f"--boot-disk-device-name={name}",
+        f"--boot-disk-labels={labels(run_id)}",
         f"--network={NETWORK}",
         f"--subnet={SUBNET}",
         "--no-address",
@@ -281,6 +324,34 @@ def create_argv(run_id: str, role: str, startup_script: str) -> list[str]:
     if "preemptible" in flat or "spot" in flat or "accelerator" in flat:
         raise PlanError("create_shape")
     return argv
+
+
+def image_describe_argv(role: str) -> list[str]:
+    """Read-only image lookup. Create does not run until this name exists."""
+    spec = target(role)
+    return [
+        "gcloud",
+        "compute",
+        "images",
+        "describe",
+        spec["image"],
+        f"--project={spec['image_project']}",
+        "--format=value(name)",
+    ]
+
+
+def disk_by_name_argv(name: str) -> list[str]:
+    if re.fullmatch(r"s4-[0-9]{1,20}-(deb|ubu|off)", name) is None:
+        raise PlanError("disk_name")
+    return [
+        "gcloud",
+        "compute",
+        "disks",
+        "list",
+        f"--project={ALLOWED_PROJECT}",
+        f"--filter=name={name}",
+        "--format=value(name)",
+    ]
 
 
 def disk_label_argv(run_id: str, role: str) -> list[str]:
@@ -436,6 +507,60 @@ def require_wif_reuse(text: str) -> None:
         raise PlanError("environment")
 
 
+def desired_lsm(list_text: str, mode: str) -> str:
+    """LSM list with bpf added or removed. The kernel keeps the last lsm=."""
+    if mode not in {"require", "forbid"}:
+        raise PlanError("bpf_mode")
+    tokens = [
+        token.strip()
+        for token in list_text.split(",")
+        if token.strip() and token.strip() != "bpf"
+    ]
+    if mode == "require":
+        tokens.append("bpf")
+    desired = ",".join(tokens)
+    if re.fullmatch(r"[a-z0-9_,]*", desired) is None:
+        raise PlanError("lsm")
+    return desired
+
+
+def grub_dropin(desired: str) -> str:
+    """Shell sourced by grub-mkconfig. lsm= is the last token of DEFAULT."""
+    if re.fullmatch(r"[a-z0-9_,]*", desired) is None:
+        raise PlanError("lsm")
+    return "\n".join(
+        [
+            "strip_lsm() {",
+            "  printf '%s' \"$1\" | sed -E 's/(^|[[:space:]])lsm=[^[:space:]]*//g; s/^[[:space:]]+//; s/[[:space:]]+$//'",
+            "}",
+            'GRUB_CMDLINE_LINUX="$(strip_lsm "$GRUB_CMDLINE_LINUX")"',
+            f'GRUB_CMDLINE_LINUX_DEFAULT="$(strip_lsm "$GRUB_CMDLINE_LINUX_DEFAULT") lsm={desired}"',
+            "",
+        ]
+    )
+
+
+def last_lsm(cmdline: str) -> str:
+    found = ""
+    for field in cmdline.split():
+        if field.startswith("lsm="):
+            found = field[4:]
+    return found
+
+
+def mask_commands(run_go: str, host_name: str) -> str:
+    """Workflow mask lines. A newline is rejected before any line is emitted."""
+    lines: list[str] = []
+    for value in (run_go, host_name):
+        if value == "":
+            continue
+        if any(char in value for char in ("\n", "\r", "\x00")):
+            raise PlanError("mask_newline")
+        escaped = value.replace("%", "%25")
+        lines.append(f"::add-mask::{escaped}")
+    return "\n".join(lines)
+
+
 def guard_problems(
     *,
     project: str,
@@ -445,13 +570,16 @@ def guard_problems(
     run_go: str,
     host_name: str,
     harness_candidates: list[Path],
+    harness_ref: str = "",
+    after_auth: bool = False,
 ) -> list[str]:
     """Problems that must stop the lab before a VM is created."""
     problems: list[str] = []
     checks = (
         lambda: require_project(project),
         lambda: require_event(event),
-        lambda: require_no_static_creds(env),
+        lambda: require_no_static_creds(env, after_auth=after_auth),
+        lambda: require_harness_ref(harness_ref),
         lambda: parse_soak_minutes(soak),
         lambda: require_run_go(run_go),
         lambda: require_host_name(host_name),
@@ -500,17 +628,42 @@ def main(argv: list[str]) -> int:
             ds_hold_text(os.environ.get("DS_REF", ""), os.environ.get("RUN_GO", "")) + "\n"
         )
         return 0
+    if command == "mask-lines":
+        try:
+            text = mask_commands(os.environ.get("RUN_GO", ""), os.environ.get("HOST_NAME", ""))
+        except PlanError as exc:
+            return _print_error(exc)
+        if text:
+            print(text)
+        return 0
+    if command == "desired-lsm":
+        try:
+            print(desired_lsm(os.environ.get("LSM_LIST", ""), os.environ.get("BPF_MODE", "")))
+        except PlanError as exc:
+            return _print_error(exc)
+        return 0
+    if command == "grub-dropin":
+        try:
+            sys.stdout.write(grub_dropin(os.environ.get("DESIRED_LSM", "")))
+        except PlanError as exc:
+            return _print_error(exc)
+        return 0
     if command == "refusal-check":
         log = Path(argv[2]) if len(argv) > 2 else Path("")
         before = Path(argv[3]) if len(argv) > 3 else Path("")
         after = Path(argv[4]) if len(argv) > 4 else Path("")
+        raw_rc = argv[5] if len(argv) > 5 else ""
+        if not raw_rc.isascii() or not raw_rc.isdigit():
+            print("loader_rc", file=sys.stderr)
+            return 2
         text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
         before_lines = before.read_text(encoding="utf-8", errors="replace").splitlines() if before.is_file() else []
         after_lines = after.read_text(encoding="utf-8", errors="replace").splitlines() if after.is_file() else []
-        pin_created = any(path not in before_lines for path in after_lines)
-        for line in REFUSAL_LINES:
-            print(f"saw={line} {'yes' if line in text else 'no'}")
-        if not refusal_holds(text, pin_created):
+        fields = log_fields(text)
+        for token in REFUSAL_FIELDS:
+            print(f"saw={token} {'yes' if token in fields else 'no'}")
+        print(f"saw=NOT ENFORCING {'yes' if phrase_in_fields(fields, REFUSAL_PHRASE) else 'no'}")
+        if not refusal_holds(text, int(raw_rc, 10), before_lines, after_lines):
             print("refusal", file=sys.stderr)
             return 2
         print("refusal=held")
@@ -540,6 +693,11 @@ def main(argv: list[str]) -> int:
         return 10
     if bpf_mode not in {"require", "forbid"}:
         print("bpf_mode", file=sys.stderr)
+        return 2
+    expected_lsm = argv[8] if len(argv) > 8 else "-"
+    cmdline = argv[9] if len(argv) > 9 else ""
+    if expected_lsm != "-" and last_lsm(cmdline) != expected_lsm:
+        print("cmdline", file=sys.stderr)
         return 2
     print(f"preflight=pass image={expected_image} uname={uname} bpf_mode={bpf_mode}")
     print(f"live_enforcement={enforcement_claim()}")

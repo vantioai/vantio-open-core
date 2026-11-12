@@ -42,7 +42,10 @@ permissions:
   id-token: write
 
 concurrency:
-  group: gcp-stage4-${{ github.run_id }}
+  # One group for this workflow, so a second dispatch waits.
+  # The called cost-gate file keeps its own group. Sharing that name
+  # here would deadlock the reusable call.
+  group: gcp-stage4-lab
   cancel-in-progress: false
 
 env:
@@ -67,12 +70,7 @@ jobs:
           HOST_NAME: ${{ inputs.host_name }}
         run: |
           set -euo pipefail
-          if [ -n "$RUN_GO" ]; then
-            printf '%s\n' "::add-mask::${RUN_GO}"
-          fi
-          if [ -n "$HOST_NAME" ]; then
-            printf '%s\n' "::add-mask::${HOST_NAME}"
-          fi
+          python3 scripts/lab/stage4_plan.py mask-lines
 
       - name: Guard
         env:
@@ -90,42 +88,73 @@ jobs:
           python3 scripts/lab/stage4_drive.py guard
 
   fetch-pe:
-    name: Fetch Phantom Engine tip
+    name: Build the pinned loader on the runner
     needs: guard
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     outputs:
-      pe_git_sha: ${{ steps.pe.outputs.sha }}
+      pe_git_sha: ${{ steps.pin.outputs.sha }}
     steps:
-      - name: Checkout Phantom Engine default branch
+      - name: Checkout this workflow
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Read the harness pin
+        id: pin
+        run: |
+          set -euo pipefail
+          read_pin='import sys; sys.path.insert(0, "scripts/gcp");'
+          read_pin+='import enforcement_proof; print(enforcement_proof.PE_GIT_SHA)'
+          pin=$(python3 -c "$read_pin")
+          if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "pe_git_sha" >&2
+            exit 1
+          fi
+          echo "sha=$pin" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse static GCP keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] \
+            || [ -n "${GCP_SA_KEY:-}" ] \
+            || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static_credentials" >&2
+            exit 1
+          fi
+
+      - name: Checkout the pinned Phantom Engine commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vantioai/vantio-phantom-engine
+          ref: ${{ steps.pin.outputs.sha }}
           token: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
           persist-credentials: false
           path: pe-src
           fetch-depth: 1
 
-      - name: Phantom Engine tip
-        id: pe
+      - name: Drop checkout credentials from the remote URL
         run: |
           set -euo pipefail
           git -C pe-src remote set-url origin \
             https://github.com/vantioai/vantio-phantom-engine.git
-          sha=$(git -C pe-src rev-parse HEAD)
-          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "pe_git_sha" >&2
-            exit 1
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          tar -C pe-src --exclude .git --exclude target \
-            -cf "${RUNNER_TEMP}/pe-src.tar" .
 
-      - name: Upload the read-only tree
+      - name: Build the loader on the runner
+        env:
+          PIN: ${{ steps.pin.outputs.sha }}
+        run: |
+          set -euo pipefail
+          head=$(git -C pe-src rev-parse HEAD)
+          test "$head" = "$PIN"
+          mkdir -p loader-out
+          bash scripts/gcp/build_pe_loader.sh "$PWD/pe-src" "$PWD/loader-out" "$PIN"
+          printf '%s\n' "$PIN" > loader-out/SOURCE_SHA
+
+      - name: Upload the runner-built loader
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: stage4-pe-src-${{ github.run_id }}
-          path: ${{ runner.temp }}/pe-src.tar
+          name: stage4-loader-${{ github.run_id }}
+          path: loader-out/
           retention-days: 1
           if-no-files-found: error
 

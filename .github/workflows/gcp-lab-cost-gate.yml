@@ -642,19 +642,6 @@ jobs:
       matrix:
         role: [debian, ubuntu, refuse]
     steps:
-      - name: Mask dispatch inputs
-        env:
-          RUN_GO: ${{ inputs.run_go }}
-          HOST_NAME: ${{ inputs.host_name }}
-        run: |
-          set -euo pipefail
-          if [ -n "$RUN_GO" ]; then
-            printf '%s\n' "::add-mask::${RUN_GO}"
-          fi
-          if [ -n "$HOST_NAME" ]; then
-            printf '%s\n' "::add-mask::${HOST_NAME}"
-          fi
-
       - name: Refuse static GCP keys
         run: |
           set -euo pipefail
@@ -672,18 +659,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download the Phantom Engine tree
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: stage4-pe-src-${{ github.run_id }}
-          path: pe-pack
-
-      - name: Unpack the Phantom Engine tree
+      - name: Mask dispatch inputs
+        env:
+          RUN_GO: ${{ inputs.run_go }}
+          HOST_NAME: ${{ inputs.host_name }}
         run: |
           set -euo pipefail
-          mkdir -p pe-src
-          tar -C pe-src -xf pe-pack/pe-src.tar
-          test -f pe-src/Cargo.toml
+          python3 scripts/lab/stage4_plan.py mask-lines
+
+      - name: Download the runner-built loader
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: stage4-loader-${{ github.run_id }}
+          path: loader-out
 
       - name: Authenticate with workload identity
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
@@ -704,9 +692,10 @@ jobs:
           RUN_GO: ${{ inputs.run_go }}
           HOST_NAME: ${{ inputs.host_name }}
           DS_REF: ${{ inputs.ds_ref }}
-          PE_ROOT: pe-src
+          LOADER_DIR: loader-out
           PE_GIT_SHA: ${{ inputs.pe_git_sha }}
           HARNESS_CANDIDATES: .
+          STAGE4_AFTER_AUTH: "1"
         run: python3 scripts/lab/stage4_drive.py target
 
       - name: DS hold

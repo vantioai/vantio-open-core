@@ -14,7 +14,6 @@ import importlib
 import os
 import subprocess
 import sys
-import tarfile
 import time
 from pathlib import Path
 
@@ -28,14 +27,18 @@ from stage4_plan import (  # noqa: E402
     PlanError,
     create_argv,
     delete_argv,
+    disk_by_name_argv,
     disk_label_argv,
     ds_hold_text,
     ds_is_hold,
     enforcement_claim,
     guard_problems,
     harness_root,
+    image_describe_argv,
+    instance_name,
     list_argv,
     parse_soak_minutes,
+    remaining_names,
     require_project,
     stop_script,
     target,
@@ -53,7 +56,7 @@ def _candidates(raw: str) -> list[Path]:
     return [Path(part) for part in raw.split(":") if part]
 
 
-def _guard_from_env() -> list[str]:
+def _guard_from_env(*, after_auth: bool = False) -> list[str]:
     return guard_problems(
         project=os.environ.get("GCP_LAB_PROJECT", ""),
         event=os.environ.get("GITHUB_EVENT_NAME"),
@@ -62,6 +65,8 @@ def _guard_from_env() -> list[str]:
         run_go=os.environ.get("RUN_GO", ""),
         host_name=os.environ.get("HOST_NAME", ""),
         harness_candidates=_candidates(os.environ.get("HARNESS_CANDIDATES", "")),
+        harness_ref=os.environ.get("HARNESS_REF", ""),
+        after_auth=after_auth,
     )
 
 
@@ -203,6 +208,15 @@ def _create(role: str) -> str:
     return argv[4]
 
 
+def _open_vm(role: str) -> str:
+    """Describe the image, then create. A miss does not create."""
+    spec = target(role)
+    described = _run(image_describe_argv(role), check=False)
+    if described.returncode != 0 or described.stdout.strip() != spec["image"]:
+        raise PlanError("image")
+    return _create(role)
+
+
 def phase_commands(harness: object) -> list[tuple[str, str]]:
     """Commands for one full slice. The harness owns the text of each command."""
     phases = tuple(harness.phases_for("full"))  # type: ignore[attr-defined]
@@ -236,11 +250,16 @@ def _load_harness(root: Path) -> object:
     return importlib.import_module("enforcement_proof")
 
 
-def _proof_env(loader_dir: Path, deb_dir: Path) -> dict[str, str]:
+def _proof_env(harness: object, loader_dir: Path, deb_dir: Path) -> dict[str, str]:
+    """Pass the harness pin. Drop the two paths the auth action exports."""
+    pinned = harness.PE_GIT_SHA  # type: ignore[attr-defined]
+    supplied = os.environ.get("PE_GIT_SHA", "")
+    if supplied not in ("", pinned):
+        raise PlanError("pe_git_sha")
     return {
         "GCP_LAB_PROJECT": ALLOWED_PROJECT,
         "PROOF_SLICE": "full",
-        "PE_GIT_SHA": os.environ.get("PE_GIT_SHA", ""),
+        "PE_GIT_SHA": pinned,
         "PROOF_RUN_GO": os.environ.get("RUN_GO", ""),
         "PROOF_HOST_NAME": os.environ.get("HOST_NAME", ""),
         "STOP_AFTER_MINUTES": HARNESS_STOP_MINUTES,
@@ -248,6 +267,13 @@ def _proof_env(loader_dir: Path, deb_dir: Path) -> dict[str, str]:
         "LOADER_DIR": str(loader_dir),
         "DEB_DIR": str(deb_dir),
     }
+
+
+def require_source_sha(loader_dir: Path, pinned: str) -> None:
+    path = loader_dir / "SOURCE_SHA"
+    text = path.read_text(encoding="utf-8").strip() if path.is_file() else ""
+    if text != pinned:
+        raise PlanError("pe_git_sha")
 
 
 def _private_dir() -> Path:
@@ -267,30 +293,39 @@ def _assert_logs_clean() -> None:
             raise PlanError("log_redaction")
 
 
-def _copy_tree(name: str, pe_root: Path) -> None:
-    archive = _log_dir() / "pe-src.tar"
-    with tarfile.open(archive, "w") as handle:
-        for path in pe_root.rglob("*"):
-            if ".git" in path.parts or "target" in path.parts:
-                continue
-            if path.is_file():
-                handle.add(path, arcname=str(path.relative_to(pe_root)))
+def _copy_guest_scripts(name: str) -> None:
     _scp(
         [
             str(Path(__file__).resolve().parent / "stage4_plan.py"),
             str(Path(__file__).resolve().parent / "stage4_guest.sh"),
-            str(archive),
         ],
         f"{name}:/tmp/",
     )
+
+
+def _install_loader(name: str, loader_dir: Path) -> None:
     made = _ssh(
         name,
-        "sudo mkdir -p /var/lib/vantio-stage4/pe-src && "
-        "sudo tar -C /var/lib/vantio-stage4/pe-src -xf /tmp/pe-src.tar && "
-        "sudo chown -R \"$(id -u):$(id -g)\" /var/lib/vantio-stage4",
+        "sudo mkdir -p /var/lib/vantio-lab/guest && "
+        "sudo chown -R \"$(id -u):$(id -g)\" /var/lib/vantio-lab",
     )
     if made.returncode != 0:
-        raise PlanError("stage_source")
+        raise PlanError("guest_dir")
+    for filename in (
+        "vantio-loader",
+        "enforcement_proof_lab.sh",
+        "ldd.txt",
+        "loader.sha256",
+        "script.sha256",
+    ):
+        _scp([str(loader_dir / filename)], f"{name}:/var/lib/vantio-lab/guest/{filename}")
+    mode = _ssh(
+        name,
+        "chmod 755 /var/lib/vantio-lab/guest/vantio-loader "
+        "/var/lib/vantio-lab/guest/enforcement_proof_lab.sh",
+    )
+    if mode.returncode != 0:
+        raise PlanError("loader_mode")
 
 
 def _guest(name: str, mode: str, role: str) -> subprocess.CompletedProcess[str]:
@@ -304,7 +339,6 @@ def _guest(name: str, mode: str, role: str) -> subprocess.CompletedProcess[str]:
             f"EXPECTED_UNAME={spec['uname']}",
             f"BPF_MODE={spec['bpf']}",
             f"SOAK_MINUTES={minutes}",
-            "PE_ROOT=/var/lib/vantio-stage4/pe-src",
             "STAGE4_PLAN=/tmp/stage4_plan.py",
             "bash",
             "/tmp/stage4_guest.sh",
@@ -342,7 +376,7 @@ def _fetch_debs(root: Path, dest: Path) -> None:
 
 def _stage_harness(name: str, harness: object, loader_dir: Path, deb_dir: Path) -> None:
     stage = _private_dir() / "guest-stage"
-    env = _proof_env(loader_dir, deb_dir)
+    env = _proof_env(harness, loader_dir, deb_dir)
     try:
         paths = harness._write_guest_files(env, stage, with_loader=True)  # type: ignore[attr-defined]
     except SystemExit as exc:
@@ -363,17 +397,6 @@ def _stage_harness(name: str, harness: object, loader_dir: Path, deb_dir: Path) 
     prepared = _ssh(name, harness.PREPARE_COMMAND)  # type: ignore[attr-defined]
     if prepared.returncode != 0:
         raise PlanError("guest_prepare")
-
-
-def _pull_loader(name: str, role: str, dest: Path) -> None:
-    packed = _guest(name, "pack", role)
-    if packed.returncode != 0:
-        raise PlanError("pack_loader")
-    local = _log_dir() / "loader-pack.tar"
-    _scp([f"{name}:/tmp/loader-pack.tar"], str(local))
-    dest.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(local, "r") as handle:
-        handle.extractall(dest, filter="data")
 
 
 def _run_phases(name: str, harness: object) -> None:
@@ -407,8 +430,18 @@ def _run_phases(name: str, harness: object) -> None:
         raise PlanError("harness_phase_count")
 
 
+def _require_loader(harness: object, loader_dir: Path) -> None:
+    require_source_sha(loader_dir, harness.PE_GIT_SHA)  # type: ignore[attr-defined]
+    try:
+        harness.check_loader_dir(loader_dir)  # type: ignore[attr-defined]
+    except SystemExit as exc:
+        reason = exc.code if isinstance(exc.code, str) else "loader_missing"
+        raise PlanError(str(reason)) from exc
+
+
 def _target(role: str) -> int:
-    problems = _guard_from_env()
+    after_auth = os.environ.get("STAGE4_AFTER_AUTH") == "1"
+    problems = _guard_from_env(after_auth=after_auth)
     if problems:
         return _print_guard(problems)
     spec = target(role)
@@ -436,28 +469,26 @@ def _target(role: str) -> int:
         print(type(exc).__name__, file=sys.stderr)
         raise PlanError("harness_import") from exc
     private = _private_dir()
-    loader_dir = private / "loader"
+    loader_dir = Path(os.environ.get("LOADER_DIR", ""))
     deb_dir = private / "debs"
-    if harness.precheck(_proof_env(loader_dir, deb_dir)) != 0:  # type: ignore[attr-defined]
+    _require_loader(harness, loader_dir)
+    if harness.precheck(_proof_env(harness, loader_dir, deb_dir)) != 0:  # type: ignore[attr-defined]
         raise PlanError("precheck")
     if role != "refuse":
         phase_commands(harness)
         _fetch_debs(root, deb_dir)
-    name = _create(role)
+    name = _open_vm(role)
     _wait_ssh(name)
-    _copy_tree(name, Path(os.environ.get("PE_ROOT", "pe-src")))
+    _copy_guest_scripts(name)
     _preflight(name, role)
-    built = _guest(name, "build", role)
-    if built.returncode != 0:
-        raise PlanError("build")
     if role == "refuse":
+        _install_loader(name, loader_dir)
         refused = _guest(name, "refuse", role)
         if refused.returncode != 0:
             raise PlanError("refusal")
         _assert_logs_clean()
         _record_ds()
         return 0
-    _pull_loader(name, role, loader_dir)
     _stage_harness(name, harness, loader_dir, deb_dir)
     _run_phases(name, harness)
     soaked = _guest(name, "soak", role)
@@ -516,6 +547,11 @@ def _verify() -> int:
     for kind in ("instances", "disks", "addresses"):
         for name, _place in _rows(kind, run_id):
             left.append(f"{kind}:{name}")
+    for role in ("debian", "ubuntu", "refuse"):
+        disk_name = instance_name(run_id, role)
+        completed = _run(disk_by_name_argv(disk_name), check=True)
+        for name in remaining_names(completed.stdout):
+            left.append(f"disks:{name}")
     if left:
         print("resources_remain", file=sys.stderr)
         for item in left:

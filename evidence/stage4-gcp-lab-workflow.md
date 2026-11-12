@@ -41,9 +41,54 @@ name `W3_LAB_PRIVATE_BUNDLE_TOKEN`, the same name
 was not printed. No new secret was created.
 
 The harness used in this repo is `scripts/gcp/enforcement_proof.py`.
-`scripts/gcp/guest_phases.sh` and `scripts/gcp/proof_grade.py` are not in
-this tree. The drive does not check out another repo for the harness, and
-it does not call `enforcement_proof.run`.
+`scripts/gcp/guest_phases.sh` and `scripts/gcp/proof_grade.py` are not
+required and are not in this tree. The drive calls `phases_for("full")`
+and `phase_accepted`. It does not call `run_proof`, because that function
+creates its own VM. There is no 31-phase count. `PE_GIT_SHA` passed into
+`precheck` is that module's constant
+`864289cb2c9c4135d74233c74c6655087de3f20d`. The fetch job checks out that
+commit and `scripts/gcp/build_pe_loader.sh` builds the loader on the
+runner. The guest script has no `apt-get` and no `rustup`. A non-empty
+`HARNESS_REF` is rejected. The allowlist is the empty ref, which means
+this repo's checkout.
+
+`lab_auto.WORKFLOWS` was not changed. It still names seven workflow files.
+`gcp-stage4-lab.yml` is not one of them. The auth action stays inside
+`gcp-lab-cost-gate.yml`, which is already in that tuple. The one line that
+was not added, and is a decision for Zach only if he rejects this fit, is
+a new entry `"gcp-stage4-lab.yml",` in `scripts/gcp/lab_auto.py`
+`WORKFLOWS`. This change does not add it.
+
+The `gcp-lab` environment's required-reviewer list was not changed. V136
+read that list as empty. Adding required reviewers on the create job, and
+leaving teardown able to delete without a second wait, is a settings
+decision for Zach. This run did not change environment settings.
+
+The typed `run_go` string is a length check. It is not a go. An empty
+event name fails the guard. The caller `on:` block is still only
+`workflow_dispatch`. The jobs inside the cost-gate file also accept
+`workflow_call`, because that is the event name of a reusable call.
+
+Before create, the drive runs `gcloud compute images describe` for the
+pinned image name and does not create if that command fails or returns a
+different name. This run did not call that API. The boot disk is 10 GB
+`pd-standard`, with `--boot-disk-labels` set to the same two labels.
+Verify also lists the disk names `s4-<run id>-deb`, `s4-<run id>-ubu`,
+and `s4-<run id>-off`. The guest GRUB drop-in puts `lsm=` last on
+`GRUB_CMDLINE_LINUX_DEFAULT`, and the second preflight compares
+`/proc/cmdline`. Neither image was booted, so the observed `uname -r`
+is still unknown.
+
+The caller concurrency group is `gcp-stage4-lab`, so a second dispatch
+waits. It does not reuse the cost-gate group name, because the caller
+holds its group while the reusable workflow runs. No price figure is
+recorded here. credit balance: UNREAD
+
+The shell step that refuses a caller-supplied key file stays before the
+auth step. After auth, `STAGE4_AFTER_AUTH=1` and the drive does not treat
+`GOOGLE_APPLICATION_CREDENTIALS` or
+`CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE` as a static key. Those are the
+two paths that auth action exports. `GCP_SA_KEY` still fails.
 
 ## DS hold
 
@@ -65,7 +110,7 @@ bad project or a missing harness, not the DS step.
 | `python3 -m py_compile scripts/lab/stage4_plan.py scripts/lab/stage4_drive.py scripts/lab/test_stage4_plan.py` | 0 |
 | `bash -n scripts/lab/stage4_guest.sh` | 0 |
 | `shellcheck scripts/lab/stage4_guest.sh` (0.9.0-1) | 0 |
-| `python3 -m unittest discover -s scripts/lab -q` | 0 (132 tests, no skip lines) |
+| `python3 -m unittest discover -s scripts/lab -q` | 0 (139 tests, no skip lines) |
 | `/tmp/actionlint` on `gcp-stage4-lab.yml` and `gcp-lab-cost-gate.yml` (1.7.12) | 0 |
 | `yamllint` on `gcp-stage4-lab.yml`, line-length 120, truthy and comments disabled | 0 |
 | `python3 scripts/gcp/test_enforcement_proof.py -v` | 0 (23 tests) |
@@ -111,7 +156,8 @@ on the file this change edits. The value assigned is unchanged.
 - No VM was booted. The image names and uname strings were not checked
   on a guest. The Compute Engine image API was not called.
 - `scripts/gcp/fetch_offline_debs.sh` was not executed.
-- The Phantom Engine default branch was not checked out in this run.
+- The pinned Phantom Engine commit was not checked out in this run.
+  The workflow's fetch job is the step that would check it out.
 - Pull request 85 was not modified. Run 26 was not read.
 
 ## Gap list
@@ -125,9 +171,14 @@ on the file this change edits. The value assigned is unchanged.
   before a VM.
 - Quinn is still a blocker for a live run. This run did not contact Quinn.
 - The harness `precheck` accepts only Phantom Engine git SHA
-  `864289cb2c9c4135d74233c74c6655087de3f20d`. The fetch job passes the
-  default-branch tip through and does not replace that check. A mismatch
-  stops before a VM. This run did not resolve that tip.
+  `864289cb2c9c4135d74233c74c6655087de3f20d`. The drive passes that
+  constant. A different supplied value fails before create. This run did
+  not check out that commit and did not build the loader.
+- The image describe step was not executed. A wrong or missing image name
+  fails closed in the unit test. That does not prove the image exists.
+- The GRUB `lsm=` order was checked by sourcing the drop-in in bash. It
+  was not checked on a booted guest. The catalog `uname -r` strings were
+  not observed on a guest.
 - `fetch_offline_debs.sh` fetches an Ubuntu 24.04 snapshot. Debian 13 and
   Ubuntu 26.04 may reject those packages. This run did not execute it.
 - The lab network path for a guest package download was not tested.

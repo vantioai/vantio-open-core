@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -17,6 +19,7 @@ if str(GCP_DIR) not in sys.path:
     sys.path.insert(0, str(GCP_DIR))
 
 import enforcement_proof
+import lab_auto
 import stage4_drive
 import stage4_plan
 
@@ -126,11 +129,20 @@ class Stage4PlanTests(unittest.TestCase):
         self.assertEqual(stage4_plan.UBUNTU_IMAGE, "ubuntu-2604-resolute-amd64-v20261107")
         self.assertEqual(stage4_plan.UBUNTU_UNAME, "7.0.0-1016-gcp")
 
-    def test_refusal_needs_every_line_and_no_new_pin(self) -> None:
-        text = "\n".join(stage4_plan.REFUSAL_LINES)
-        self.assertTrue(stage4_plan.refusal_holds(text, False))
-        self.assertFalse(stage4_plan.refusal_holds(text, True))
-        self.assertFalse(stage4_plan.refusal_holds("NOT ENFORCING\n", False))
+    def test_refusal_needs_a_failed_loader_and_whole_fields(self) -> None:
+        text = "INSTALL_ENFORCEMENT_READINESS_BLOCKED bpf_lsm_inactive NOT ENFORCING"
+        self.assertTrue(stage4_plan.refusal_holds(text, 1, [], []))
+        self.assertFalse(stage4_plan.refusal_holds("", 1, [], []))
+        self.assertFalse(stage4_plan.refusal_holds(text, 0, [], []))
+        glued = "xINSTALL_ENFORCEMENT_READINESS_BLOCKED bpf_lsm_inactive_extra NOTX ENFORCING"
+        self.assertFalse(stage4_plan.refusal_holds(glued, 1, [], []))
+        mutated = text.replace("bpf_lsm_inactive", "bpf_lsm_inactivx", 1)
+        self.assertNotEqual(mutated, text)
+        self.assertFalse(stage4_plan.refusal_holds(mutated, 1, [], []))
+        fresh = stage4_plan.new_vantio_programs([], ["id 1 name vantio_prog"])
+        self.assertFalse(stage4_plan.refusal_holds(text, 1, [], fresh))
+        self.assertTrue(stage4_plan.refusal_holds(text, 1, ["id 9 name other"], ["id 9 name other"]))
+        self.assertFalse(stage4_plan.refusal_holds(text, 1, ["listing=unavailable"], []))
         self.assertEqual(stage4_plan.enforcement_claim(), "NOT_PROVEN")
 
     def test_create_argv_is_on_demand_and_labelled(self) -> None:
@@ -144,8 +156,13 @@ class Stage4PlanTests(unittest.TestCase):
             flat = " ".join(argv)
             self.assertIn("--no-address", argv)
             self.assertIn("--boot-disk-type=pd-standard", argv)
+            self.assertIn("--boot-disk-size=10GB", argv)
+            self.assertIn(f"--boot-disk-name={stage4_plan.instance_name('123', role)}", argv)
+            self.assertIn("--boot-disk-labels=vantio-lab=stage4,run-id=123", argv)
             self.assertIn("--machine-type=e2-standard-2", argv)
             self.assertIn(f"--image={image}", argv)
+            self.assertNotIn("--image-family", flat)
+            self.assertIn("--project=vantio-lab-oct08", argv)
             self.assertIn("--labels=vantio-lab=stage4,run-id=123", argv)
             self.assertIn("--tags=vantio-gcp-lab", argv)
             self.assertIn(f"--metadata-from-file=startup-script={startup}", argv)
@@ -209,12 +226,30 @@ class Stage4PlanTests(unittest.TestCase):
         )
         self.assertIn("inputs.stage4 == '1'", doc["jobs"]["stage4-target"]["if"])
         self.assertIn("stage4_plan.py ds-hold", text)
-        caller = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        caller_text = WORKFLOW.read_text(encoding="utf-8")
+        caller = yaml.safe_load(caller_text)
         self.assertEqual(
             caller["jobs"]["lab"]["uses"],
             "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main",
         )
         self.assertEqual(caller["jobs"]["lab"]["with"]["stage4"], "1")
+        self.assertEqual(caller["concurrency"]["group"], "gcp-stage4-lab")
+        self.assertNotIn("harness_ref:", caller_text)
+        self.assertIn("build_pe_loader.sh", caller_text)
+        self.assertIn('STAGE4_AFTER_AUTH: "1"', text)
+        self.assertNotIn("gcp-stage4-lab.yml", lab_auto.WORKFLOWS)
+        self.assertNotIn("gcp-stage4-lab.yml", lab_auto.attribute_condition())
+        stage4_jobs = text.split("  stage4-target:", 1)[1]
+        for line in _run_bodies(stage4_jobs):
+            self.assertNotIn("${{", line)
+        for line in _run_bodies(caller_text):
+            self.assertNotIn("${{", line)
+        target = doc["jobs"]["stage4-target"]
+        names = [step.get("name") for step in target["steps"]]
+        self.assertLess(names.index("Refuse static GCP keys"), names.index("Authenticate with workload identity"))
+        self.assertLess(names.index("Authenticate with workload identity"), names.index("Run the lab role"))
+        self.assertNotIn("apt-get", (ROOT / "scripts" / "lab" / "stage4_guest.sh").read_text(encoding="utf-8"))
+        self.assertNotIn("rustup", (ROOT / "scripts" / "lab" / "stage4_guest.sh").read_text(encoding="utf-8"))
 
     def test_ds_hold_is_not_a_pass_and_not_exit_2(self) -> None:
         self.assertEqual(stage4_plan.DS_HOLD, "DS NOT WIRED — waiting on #85 run 26")
@@ -278,14 +313,28 @@ class Stage4PlanTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "phase")
 
     def test_static_credentials_and_events(self) -> None:
-        stage4_plan.require_event(None)
         stage4_plan.require_event("workflow_dispatch")
         stage4_plan.require_event("workflow_call")
+        for empty in (None, ""):
+            with self.assertRaises(stage4_plan.PlanError) as caught:
+                stage4_plan.require_event(empty)
+            self.assertEqual(caught.exception.reason, "event")
         with self.assertRaises(stage4_plan.PlanError) as caught:
             stage4_plan.require_event("schedule")
         self.assertEqual(caught.exception.reason, "event")
         with self.assertRaises(stage4_plan.PlanError) as caught:
             stage4_plan.require_no_static_creds({"GOOGLE_APPLICATION_CREDENTIALS": "/tmp/key.json"})
+        self.assertEqual(caught.exception.reason, "static_credentials")
+        stage4_plan.require_no_static_creds(
+            {"GOOGLE_APPLICATION_CREDENTIALS": "/tmp/wif.json"},
+            after_auth=True,
+        )
+        stage4_plan.require_no_static_creds(
+            {"CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE": "/tmp/wif.json"},
+            after_auth=True,
+        )
+        with self.assertRaises(stage4_plan.PlanError) as caught:
+            stage4_plan.require_no_static_creds({"GCP_SA_KEY": "/tmp/key.json"}, after_auth=True)
         self.assertEqual(caught.exception.reason, "static_credentials")
 
     def test_remaining_names(self) -> None:
@@ -400,6 +449,197 @@ class Stage4PlanTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0)
         self.assertIn("execute=0", completed.stdout)
         self.assertNotIn("verified_removed=yes", completed.stdout)
+
+    def test_mask_rejects_a_newline_before_emitting_a_command(self) -> None:
+        secret = "run-go-ok\n::set-env::oops"
+        with self.assertRaises(stage4_plan.PlanError) as caught:
+            stage4_plan.mask_commands(secret, "labhost")
+        self.assertEqual(caught.exception.reason, "mask_newline")
+        self.assertNotIn(secret, str(caught.exception))
+        self.assertEqual(
+            stage4_plan.mask_commands("run%go-ok", ""),
+            "::add-mask::run%25go-ok",
+        )
+
+    def test_grub_puts_lsm_last_on_the_default_token(self) -> None:
+        desired = stage4_plan.desired_lsm("lockdown,capability,bpf", "require")
+        self.assertEqual(desired, "lockdown,capability,bpf")
+        dropin = stage4_plan.grub_dropin(desired)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "lsm.cfg"
+            path.write_text(dropin, encoding="utf-8")
+            completed = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    'GRUB_CMDLINE_LINUX="quiet lsm=lockdown,capability"; '
+                    'GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0 lsm=stock"; '
+                    f'. "{path}"; printf "%s\\n%s\\n" "$GRUB_CMDLINE_LINUX" "$GRUB_CMDLINE_LINUX_DEFAULT"',
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        linux, default = completed.stdout.splitlines()
+        self.assertNotIn("lsm=", linux)
+        self.assertTrue(default.endswith(f"lsm={desired}"))
+        self.assertEqual(stage4_plan.last_lsm(f"quiet {default}"), desired)
+        earlier = f"lsm={desired} lsm=stock"
+        self.assertNotEqual(stage4_plan.last_lsm(earlier), desired)
+        with self.assertRaises(stage4_plan.PlanError):
+            stage4_plan.grub_dropin(desired + " ")
+        image = "projects/debian-cloud/global/images/" + stage4_plan.DEBIAN_IMAGE
+        code = stage4_plan.main(
+            [
+                "stage4_plan.py",
+                "guest-preflight",
+                image,
+                stage4_plan.DEBIAN_UNAME,
+                "lockdown,bpf",
+                stage4_plan.DEBIAN_IMAGE,
+                stage4_plan.DEBIAN_UNAME,
+                "require",
+                desired,
+                f"quiet lsm={desired[:-1]}x",
+            ]
+        )
+        self.assertEqual(code, 2)
+
+    def test_image_describe_miss_does_not_create(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(argv: list[str], check: bool) -> subprocess.CompletedProcess[str]:
+            calls.append(list(argv))
+            if "images" in argv:
+                return subprocess.CompletedProcess(argv, 1, "", "NOT_FOUND")
+            return subprocess.CompletedProcess(argv, 0, "created\n", "")
+
+        with mock.patch.object(stage4_drive, "_run", fake_run):
+            with self.assertRaises(stage4_plan.PlanError) as caught:
+                stage4_drive._open_vm("debian")
+        self.assertEqual(caught.exception.reason, "image")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1:4], ["compute", "images", "describe"])
+        mutated = stage4_plan.DEBIAN_IMAGE[:-1] + ("x" if stage4_plan.DEBIAN_IMAGE[-1] != "x" else "y")
+
+        def wrong_name(argv: list[str], check: bool) -> subprocess.CompletedProcess[str]:
+            calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, mutated + "\n", "")
+
+        calls.clear()
+        with mock.patch.object(stage4_drive, "_run", wrong_name):
+            with self.assertRaises(stage4_plan.PlanError) as caught:
+                stage4_drive._open_vm("ubuntu")
+        self.assertEqual(caught.exception.reason, "image")
+        self.assertEqual(len(calls), 1)
+
+    def test_unlabeled_disk_name_fails_verify(self) -> None:
+        def fake_rows(kind: str, run_id: str) -> list[tuple[str, str]]:
+            return []
+
+        def fake_run(argv: list[str], check: bool) -> subprocess.CompletedProcess[str]:
+            if any("name=s4-44-off" in part for part in argv):
+                return subprocess.CompletedProcess(argv, 0, "s4-44-off\n", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        env = os.environ.copy()
+        env.update({"GCP_LAB_PROJECT": "vantio-lab-oct08", "GCP_LAB_EXECUTE": "1", "GITHUB_RUN_ID": "44"})
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(stage4_drive, "_rows", fake_rows), mock.patch.object(stage4_drive, "_run", fake_run):
+                code = stage4_drive._verify()
+        self.assertEqual(code, 1)
+        with self.assertRaises(stage4_plan.PlanError):
+            stage4_plan.disk_by_name_argv("s4-44-ofx")
+
+    def test_proof_env_uses_the_harness_pin(self) -> None:
+        env = _proof_env_with_supplied("864289cb2c9c4135d74233c74c6655087de3f20e")
+        self.assertIsNone(env)
+        os.environ["PE_GIT_SHA"] = enforcement_proof.PE_GIT_SHA
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/tmp/wif.json"
+        try:
+            built = stage4_drive._proof_env(enforcement_proof, Path("loader"), Path("debs"))
+        finally:
+            os.environ.pop("PE_GIT_SHA", None)
+            os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+        self.assertEqual(built["PE_GIT_SHA"], enforcement_proof.PE_GIT_SHA)
+        self.assertNotIn("GOOGLE_APPLICATION_CREDENTIALS", built)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SOURCE_SHA").write_text(enforcement_proof.PE_GIT_SHA + "\n", encoding="utf-8")
+            stage4_drive.require_source_sha(root, enforcement_proof.PE_GIT_SHA)
+            flipped = enforcement_proof.PE_GIT_SHA[:-1] + ("a" if enforcement_proof.PE_GIT_SHA[-1] != "a" else "b")
+            (root / "SOURCE_SHA").write_text(flipped + "\n", encoding="utf-8")
+            with self.assertRaises(stage4_plan.PlanError) as caught:
+                stage4_drive.require_source_sha(root, enforcement_proof.PE_GIT_SHA)
+            self.assertEqual(caught.exception.reason, "pe_git_sha")
+
+    def test_harness_ref_allowlist_rejects_a_caller_ref(self) -> None:
+        stage4_plan.require_harness_ref("")
+        with self.assertRaises(stage4_plan.PlanError) as caught:
+            stage4_plan.require_harness_ref("main")
+        self.assertEqual(caught.exception.reason, "harness_ref")
+        self.assertEqual(stage4_plan.HARNESS_FILES, ("scripts/gcp/enforcement_proof.py",))
+        self.assertNotIn("guest_phases.sh", stage4_plan.HARNESS_FILES)
+        self.assertNotIn("proof_grade.py", stage4_plan.HARNESS_FILES)
+
+    def test_empty_event_fails_the_guard_cli(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "GCP_LAB_PROJECT": "vantio-lab-oct08",
+                "GITHUB_EVENT_NAME": "",
+                "SOAK_MINUTES": "60",
+                "RUN_GO": "run-go-ok",
+                "HOST_NAME": "labhost",
+                "HARNESS_CANDIDATES": str(ROOT),
+            }
+        )
+        env.pop("GCP_LAB_EXECUTE", None)
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "guard"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("event", completed.stderr)
+        self.assertNotIn("gcloud", completed.stdout)
+
+
+def _run_bodies(text: str) -> list[str]:
+    bodies: list[str] = []
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        if re.match(r"\s*run:\s*\|\s*$", lines[index]):
+            indent = len(lines[index]) - len(lines[index].lstrip(" "))
+            index += 1
+            while index < len(lines):
+                blank = lines[index].strip() == ""
+                here = len(lines[index]) - len(lines[index].lstrip(" "))
+                if not blank and here <= indent:
+                    break
+                bodies.append(lines[index])
+                index += 1
+            continue
+        index += 1
+    return bodies
+
+
+def _proof_env_with_supplied(supplied: str) -> dict[str, str] | None:
+    os.environ["PE_GIT_SHA"] = supplied
+    try:
+        stage4_drive._proof_env(enforcement_proof, Path("loader"), Path("debs"))
+    except stage4_plan.PlanError as exc:
+        if exc.reason != "pe_git_sha":
+            raise
+        return None
+    else:
+        return {"unexpected": "accepted"}
+    finally:
+        os.environ.pop("PE_GIT_SHA", None)
 
 
 if __name__ == "__main__":
