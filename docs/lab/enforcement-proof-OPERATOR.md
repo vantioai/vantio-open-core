@@ -41,7 +41,7 @@ Zach clicks **GCP lab enforcement proof** on `main`.
 
 `7.0` and `6.12` stay refused before a VM. They are not mapped to an image.
 
-The families that would match those kernels are `ubuntu-os-cloud/ubuntu-2604-lts-amd64` for 7.0 and `debian-cloud/debian-13` for 6.12. The lab create policy does not allow either one:
+The families named for those kernels are `ubuntu-os-cloud/ubuntu-2604-lts-amd64` for 7.0 and `debian-cloud/debian-13` for 6.12. A public Compute Engine family lookup from this runner returned 401 for both, and for `ubuntu-2404-lts-amd64`, so this branch does not claim those images exist. The lab create policy does not allow either one:
 
 - `offline_create_argv` in `scripts/gcp/offline_deliver_1.py` exits `image` unless `image_family` is `ubuntu-2404-lts-amd64` and `image_project` is `ubuntu-os-cloud`. The gcloud command then hardcodes `--image-family=ubuntu-2404-lts-amd64` and `--image-project=ubuntu-os-cloud`.
 - `ENUMS["image"]` is only `ubuntu-os-cloud/ubuntu-2404-lts-amd64`. `distro_scope` is `ubuntu-2404-only`. The create test asserts `debian-cloud` is absent from the argv.
