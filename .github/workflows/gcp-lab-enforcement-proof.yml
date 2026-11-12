@@ -1,1 +1,90 @@
-PLACEHOLDER
+name: GCP lab enforcement proof
+
+# Customer-install enforcement proof for one allowlisted Phantom Engine git tip.
+# The tip is the pe_git_sha dispatch input: 40 lowercase hex on
+# scripts/gcp/pe-git-sha-allowlist.txt. That value is a git tip, not a seal.
+# Any other value fails in precheck, before a VM.
+# gcp-lab-provision.yml is the sealed-bundle path and does not run
+# scripts/enforcement_proof_lab.sh.
+#
+# VANTIO_LAB_DIR on the guest is /var/lib/vantio-enforcement-proof.
+# Reboot masks google-shutdown-scripts, then systemctl reboot --force.
+# A green run leaves the VM up. Zach then dispatches
+# .github/workflows/gcp-lab-teardown.yml and
+# .github/workflows/gcp-lab-verify-removed.yml with the instance name.
+# A failed proof job deletes the VM it created.
+#
+# The guest jobs authenticate inside gcp-lab-cost-gate.yml. Their OIDC
+# job_workflow_ref is that file at refs/heads/main. This file does not call
+# google-github-actions/auth. live_enforcement stays NOT_PROVEN.
+
+env:
+  VANTIO_PARTNER_MARKERS: ${{ vars.VANTIO_PARTNER_MARKERS }}
+  GCP_LAB_PROJECT: vantio-lab-oct08
+  GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
+
+on:
+  workflow_dispatch:
+    inputs:
+      pe_git_sha:
+        description: Phantom Engine git tip. Full 40 lowercase hex on scripts/gcp/pe-git-sha-allowlist.txt. Not a seal.
+        required: true
+        default: 864289cb2c9c4135d74233c74c6655087de3f20d
+        type: string
+      run_go:
+        description: Zach's own-words run go. Not printed.
+        required: true
+        type: string
+      host_name:
+        description: Guest hostname -s. Lowercase. Also the only allowlist entry. Not printed.
+        required: true
+        type: string
+      proof_slice:
+        description: full runs every phase in one dispatch. reboot-pre stops after the reboot and leaves the VM. reboot-post continues that VM.
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - reboot-pre
+          - reboot-post
+      instance_name:
+        description: Required for reboot-post. The vantio-gcp-lab- name from the reboot-pre run. Empty otherwise.
+        required: false
+        default: ""
+        type: string
+      stop_after_minutes:
+        description: Guest shutdown delay. 90 through 120. Use 120 for full.
+        required: true
+        default: "120"
+        type: string
+      uninstall_approval:
+        description: Optional. Passed through to uninstall and not printed. Empty leaves NOT_RUN_NO_APPROVAL when the host is enrolled.
+        required: false
+        default: ""
+        type: string
+      guest_kernel:
+        description: ubuntu-24.04 creates the current Ubuntu 24.04 guest. 7.0 and 6.12 stop before a VM. This workflow does not name a GCP image for those two.
+        required: true
+        default: ubuntu-24.04
+        type: choice
+        options:
+          - ubuntu-24.04
+          - "7.0"
+          - "6.12"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: vantio-gce-slot
+  cancel-in-progress: false
+
+jobs:
+  precheck:
+    name: Check dispatch inputs
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '[\"self-hosted\", \"vantio-enrolled\"]' || '\"ubuntu-latest\"') }}
+    environment: w3-lab-auto
+    timeout-minutes: 15
