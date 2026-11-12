@@ -23,8 +23,9 @@ PROVISION = ROOT / ".github" / "workflows" / "gcp-lab-provision.yml"
 BUILD = ROOT / "scripts" / "gcp" / "build_pe_loader.sh"
 PIN = ep.PE_GIT_SHA
 MAIN_TIP = "b3567a2aa3d705e8214e1cc671d30c31b9ac1c98"
+MERGED_TIP = "4bfb4fdcd52b85137d54dd5e45a46d71a2361b59"
 DRAFT_TIP = "2d7b92949348478705545a9af660e2dbec3b94af"
-TIPS = (PIN, MAIN_TIP)
+TIPS = (PIN, MAIN_TIP, MERGED_TIP)
 GO = "zach-run-go-placeholder"
 HOST = "proof81"
 GATE = json.dumps({"expected_oop_usd": "0", "abort": False})
@@ -75,7 +76,7 @@ def _cargo_workdir_is_checkout(workdir: str, volume: str, checkout: Path) -> boo
 class PinAndOrderTests(unittest.TestCase):
     def test_allowlisted_tips_pass_and_other_hex_fails(self) -> None:
         tips = ep.read_allowlist()
-        self.assertEqual(tips, {PIN: False, MAIN_TIP: False})
+        self.assertEqual(tips, {PIN: False, MAIN_TIP: False, MERGED_TIP: False})
         self.assertEqual(ep.ALLOWLIST_FILE.name, "pe-git-sha-allowlist.txt")
         for tip in TIPS:
             self.assertEqual(len(tip), 40)
@@ -1114,11 +1115,11 @@ class PhantomReadTests(unittest.TestCase):
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertIn("pe_read=ls-remote", done.stdout)
             self.assertIn("refs/heads/main", done.stdout)
-            for tip in (PIN, MAIN_TIP):
+            for tip in (PIN, MAIN_TIP, MERGED_TIP):
                 self.assertIn(f"pe_read=ok sha={tip}", done.stdout)
             log = (root / "git.log").read_text(encoding="utf-8")
             self.assertIn("ls-remote", log)
-            self.assertEqual(log.count("fetch --depth=1"), 2)
+            self.assertEqual(log.count("fetch --depth=1"), 3)
             self.assertNotIn("gcloud", log)
             self.assertNotIn("not-a-real-token", done.stdout + done.stderr + log)
 
