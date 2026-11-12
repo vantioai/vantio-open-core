@@ -16,7 +16,7 @@ Hold. Zach merges this workflow to `main`, then Zach clicks `workflow_dispatch`.
 | Ref it accepts | `refs/heads/main` |
 | Project | `vantio-lab-oct08` |
 | Zone | `us-central1-a` |
-| Guest | Ubuntu 24.04, image family `ubuntu-2404-lts-amd64`, machine `e2-micro`, no public IP, no guest service account, OS Login, IAP |
+| Guest | Default `ubuntu-24.04`: Ubuntu 24.04, image family `ubuntu-2404-lts-amd64`, machine `e2-micro`, no public IP, no guest service account, OS Login, IAP. Choices `7.0` and `6.12` stop before a VM. |
 | Git tip | One full 40-character lowercase hex commit from `scripts/gcp/pe-git-sha-allowlist.txt`: `864289cb2c9c4135d74233c74c6655087de3f20d`, `b3567a2aa3d705e8214e1cc671d30c31b9ac1c98`, or `4bfb4fdcd52b85137d54dd5e45a46d71a2361b59`. Every allowlisted commit must be an ancestor of Phantom Engine `main`. |
 | Lab directory | `/var/lib/vantio-enforcement-proof` |
 
@@ -35,6 +35,11 @@ Zach clicks **GCP lab enforcement proof** on `main`.
 | `instance_name` | Empty, except `reboot-post`. Then paste the `vantio-gcp-lab-` name from the earlier run. |
 | `stop_after_minutes` | `120` for `full`. Allowed range is 90 through 120. |
 | `uninstall_approval` | Empty unless Zach is supplying `VANTIO_LAB_UNINSTALL_APPROVAL`. Empty is not printed. The script then records `uninstall=NOT_RUN_NO_APPROVAL` when the host is enrolled, or `uninstall=REFUSED_NOT_ENROLLED` when it is not. |
+| `guest_kernel` | `ubuntu-24.04` (default), `7.0`, or `6.12`. The default creates `ubuntu-os-cloud/ubuntu-2404-lts-amd64`. `7.0` and `6.12` fail precheck before a VM. |
+
+## Guest kernel decision
+
+`7.0` and `6.12` are dispatch choices and are not images. This repository does not name a public image family or a project image for either one. Creating or enabling that image is a GCP-side decision for Zach. This workflow does not make it. The allowlist, the ancestor check, and the workload-identity workflow are unchanged. `live_enforcement` stays **NOT_PROVEN**.
 
 The runner reaches the guest with the existing IAP helper: `gcloud compute ssh`, `--tunnel-through-iap`, `--project=vantio-lab-oct08`, `--zone=us-central1-a`, OS Login key expiry one hour. There is no laptop login in this workflow. The IAP command is `sudo bash /var/lib/vantio-lab/guest/run-proof-phase.sh PHASE`. The run go stays in a mode `0600` file on the guest, not in that command.
 
