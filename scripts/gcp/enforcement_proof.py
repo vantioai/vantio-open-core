@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Customer-install enforcement proof on one Ubuntu 24.04 lab VM.
 
-The git tip is a Phantom Engine commit. It is not a seal digest.
+The git tip is a Phantom Engine commit listed in pe-git-sha-allowlist.txt.
+It is not a seal digest.
 gcp-lab-provision.yml stays the sealed-bundle path and is not this command.
 
 This module does not call GCP unless GCP_LAB_EXECUTE=1.
@@ -31,6 +32,8 @@ import offline_deliver as od
 
 PE_REPO = "vantioai/vantio-phantom-engine"
 PE_GIT_SHA = "864289cb2c9c4135d74233c74c6655087de3f20d"
+ALLOWLIST_FILE = Path(__file__).resolve().parent / "pe-git-sha-allowlist.txt"
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 WORKFLOW_FILE = "gcp-lab-enforcement-proof.yml"
 WORKFLOW_REF = f"vantioai/vantio-open-core/.github/workflows/{WORKFLOW_FILE}@refs/heads/main"
 # Live WIF attribute condition. lab_auto.WORKFLOWS also names the proof file.
@@ -123,7 +126,7 @@ LAB_FILES = (
     "uninstall.txt",
     "uninstall-negative.txt",
 )
-USAGE = "usage: enforcement_proof.py precheck|plan|run|teardown"
+USAGE = "usage: enforcement_proof.py precheck|sha|plan|run|teardown"
 REBOOT_COMMAND = (
     "sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true; "
     "sync; "
@@ -197,8 +200,39 @@ def proof_minutes(value: object) -> int:
     return minutes
 
 
-def sha_ok(value: object) -> bool:
-    return value == PE_GIT_SHA
+def parse_allowlist(text: str) -> frozenset[str]:
+    """Accepted tips. Blank lines and # comments are ignored. Anything else must be 40 lowercase hex."""
+    found: list[str] = []
+    for raw in text.splitlines():
+        line = raw[:-1] if raw.endswith("\r") else raw
+        if not line or line.startswith("#"):
+            continue
+        if SHA_RE.fullmatch(line) is None:
+            raise SystemExit("pe_git_sha_allowlist")
+        found.append(line)
+    if not found or len(found) != len(set(found)):
+        raise SystemExit("pe_git_sha_allowlist")
+    return frozenset(found)
+
+
+def read_allowlist(path: Path | None = None) -> frozenset[str]:
+    file = ALLOWLIST_FILE if path is None else path
+    try:
+        text = file.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SystemExit("pe_git_sha_allowlist") from exc
+    return parse_allowlist(text)
+
+
+def sha_ok(value: object, *, path: Path | None = None, allowlist: frozenset[str] | None = None) -> bool:
+    """True when value is 40 lowercase hex and listed. A bad allowlist file is a refusal."""
+    if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
+        return False
+    try:
+        allowed = read_allowlist(path) if allowlist is None else allowlist
+    except SystemExit:
+        return False
+    return value in allowed
 
 
 def wif_auth_violations(files: Mapping[str, str], allowlist: Sequence[str] = LIVE_WIF_FILES) -> list[str]:
@@ -284,10 +318,12 @@ def phase_order_allowed(phases: Sequence[str]) -> bool:
     return seen_compare
 
 
-def public_plan(slice_name: str) -> dict[str, Any]:
+def public_plan(slice_name: str, pe_git_sha: str = PE_GIT_SHA) -> dict[str, Any]:
     phases = phases_for(slice_name)
     if not phase_order_allowed(phases):
         raise SystemExit("phase_order")
+    if not sha_ok(pe_git_sha):
+        raise SystemExit("pe_git_sha")
     return {
         "image_family": od.IMAGE_FAMILY,
         "image_project": od.IMAGE_PROJECT,
@@ -295,7 +331,7 @@ def public_plan(slice_name: str) -> dict[str, Any]:
         "live_enforcement": "NOT_PROVEN",
         "machine_type": lab.MACHINE_TYPE,
         "network": od.NETWORK,
-        "pe_git_sha": PE_GIT_SHA,
+        "pe_git_sha": pe_git_sha,
         "pe_repo": PE_REPO,
         "phases": list(phases),
         "project_id": od.LAB_PROJECT,
@@ -465,14 +501,25 @@ def _mixed(env: Mapping[str, str]) -> None:
         raise SystemExit("static_credentials")
 
 
+def check_sha(env: Mapping[str, str]) -> int:
+    """Refuse a tip that is not 40 lowercase hex on the allowlist. Print it only when accepted."""
+    value = env.get("PE_GIT_SHA", "")
+    if not sha_ok(value):
+        print("pe_git_sha", file=sys.stderr)
+        return 1
+    print(f"sha={value}")
+    return 0
+
+
 def precheck(env: Mapping[str, str]) -> int:
-    """Validate dispatch inputs. Prints lengths and the public git tip only."""
+    """Validate dispatch inputs. Prints lengths and the accepted git tip only."""
+    sha = env.get("PE_GIT_SHA", "")
     try:
         _mixed(env)
         slice_name = env.get("PROOF_SLICE", "")
         if slice_name not in SLICES:
             raise SystemExit("slice")
-        if not sha_ok(env.get("PE_GIT_SHA", "")):
+        if not sha_ok(sha):
             raise SystemExit("pe_git_sha")
         if not run_go_ok(env.get("PROOF_RUN_GO", "")):
             raise SystemExit("run_go")
@@ -500,7 +547,7 @@ def precheck(env: Mapping[str, str]) -> int:
             [
                 "precheck=pass",
                 f"slice={env.get('PROOF_SLICE', '')}",
-                f"sha={PE_GIT_SHA}",
+                f"sha={sha}",
                 f"run_go_len={len(go)}",
                 f"host_len={len(host)}",
             ]
@@ -563,7 +610,8 @@ def allow_evidence(payload: Mapping[str, Any]) -> dict[str, Any]:
         "zone",
     }
     kept = {key: payload[key] for key in allowed if key in payload}
-    if kept.get("pe_git_sha") not in (None, PE_GIT_SHA):
+    recorded = kept.get("pe_git_sha")
+    if recorded is not None and not sha_ok(recorded):
         raise SystemExit("pe_git_sha")
     blob = json.dumps(kept)
     if PRIVATE_MARKER.search(blob):
@@ -679,6 +727,10 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
         return 2
     if precheck(env) != 0:
         return 1
+    sha = env.get("PE_GIT_SHA", "")
+    if not sha_ok(sha):
+        print("pe_git_sha", file=sys.stderr)
+        return 1
     od._gate_ok(env)
     project = od.require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     slice_name = env["PROOF_SLICE"]
@@ -751,7 +803,7 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
             "loader_sha256": loader_sha,
             "machine_type": lab.MACHINE_TYPE,
             "observations": observations,
-            "pe_git_sha": PE_GIT_SHA,
+            "pe_git_sha": sha,
             "phases": list(phases),
             "project_id": project,
             "public_ip": False,
@@ -852,9 +904,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if command == "precheck":
             return precheck(os.environ)
+        if command == "sha":
+            return check_sha(os.environ)
         if command == "plan":
             slice_name = os.environ.get("PROOF_SLICE", "full")
-            print(json.dumps(public_plan(slice_name)))
+            sha = os.environ.get("PE_GIT_SHA") or PE_GIT_SHA
+            print(json.dumps(public_plan(slice_name, sha)))
             return 0
         if command == "run":
             return run_proof(os.environ)

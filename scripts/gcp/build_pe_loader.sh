@@ -1,20 +1,41 @@
 #!/bin/bash
-# Build vantio-loader from the pinned Phantom Engine commit.
+# Build vantio-loader from an allowlisted Phantom Engine commit.
 # This does not run scripts/enforcement_proof_lab.sh. bash -n does not attach a program.
 # The guest is an e2-micro. The compile runs in an ubuntu:24.04 container so the
 # binary matches that guest's glibc. The git tip is not a seal digest.
+# pe-git-sha-allowlist.txt is the same list enforcement_proof.py reads.
 set -euo pipefail
 
 root=${1:?}
 out=${2:?}
 pin=${3:?}
-expected=864289cb2c9c4135d74233c74c6655087de3f20d
+allowlist=$(dirname "$0")/pe-git-sha-allowlist.txt
 
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" || -n "${GCP_SA_KEY:-}" ]]; then
   echo "static_credentials" >&2
   exit 1
 fi
-if [[ "$pin" != "$expected" ]]; then
+if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]] || [[ ! -f "$allowlist" ]]; then
+  echo "pe_git_sha" >&2
+  exit 1
+fi
+pin_ok=0
+seen=0
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line=${line%$'\r'}
+  case "$line" in
+    ""|\#*) continue ;;
+  esac
+  if [[ ! "$line" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "pe_git_sha" >&2
+    exit 1
+  fi
+  seen=1
+  if [[ "$line" == "$pin" ]]; then
+    pin_ok=1
+  fi
+done < "$allowlist"
+if [[ "$seen" -ne 1 || "$pin_ok" -ne 1 ]]; then
   echo "pe_git_sha" >&2
   exit 1
 fi
@@ -27,7 +48,7 @@ case "$src" in
   *) echo "pe_src" >&2; exit 1 ;;
 esac
 head=$(git -C "$src" rev-parse HEAD)
-if [[ "$head" != "$expected" ]]; then
+if [[ "$head" != "$pin" ]]; then
   echo "pe_head" >&2
   exit 1
 fi

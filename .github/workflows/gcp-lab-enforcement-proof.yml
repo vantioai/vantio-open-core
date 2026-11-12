@@ -1,7 +1,9 @@
 name: GCP lab enforcement proof
 
-# Customer-install enforcement proof for Phantom Engine commit
-# 864289cb2c9c4135d74233c74c6655087de3f20d. That value is a git tip, not a seal.
+# Customer-install enforcement proof for one allowlisted Phantom Engine git tip.
+# The tip is the pe_git_sha dispatch input: 40 lowercase hex on
+# scripts/gcp/pe-git-sha-allowlist.txt. That value is a git tip, not a seal.
+# Any other value fails in precheck, before a VM.
 # gcp-lab-provision.yml is the sealed-bundle path and does not run
 # scripts/enforcement_proof_lab.sh.
 #
@@ -26,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       pe_git_sha:
-        description: Phantom Engine git tip. Must be 864289cb2c9c4135d74233c74c6655087de3f20d. Not a seal.
+        description: Phantom Engine git tip. Full 40 lowercase hex on scripts/gcp/pe-git-sha-allowlist.txt. Not a seal.
         required: true
         default: 864289cb2c9c4135d74233c74c6655087de3f20d
         type: string
@@ -248,11 +250,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout the pinned Phantom Engine commit
+      - name: Refuse a Phantom Engine tip that is not allowlisted
+        env:
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gcp/enforcement_proof.py sha
+
+      - name: Checkout the Phantom Engine commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vantioai/vantio-phantom-engine
-          ref: 864289cb2c9c4135d74233c74c6655087de3f20d
+          ref: ${{ inputs.pe_git_sha }}
           token: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
           persist-credentials: false
           path: phantom-engine
@@ -262,6 +271,21 @@ jobs:
         run: |
           set -euo pipefail
           git -C phantom-engine remote set-url origin https://github.com/vantioai/vantio-phantom-engine.git
+
+      - name: Record the Phantom Engine commit
+        env:
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
+        run: |
+          set -euo pipefail
+          head=$(git -C phantom-engine rev-parse HEAD)
+          if [ "$head" != "$PE_GIT_SHA" ]; then
+            echo "pe_head" >&2
+            exit 1
+          fi
+          printf 'pe_git_sha=%s\n' "$head"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            printf 'pe_git_sha=%s\n' "$head" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Setup Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -306,10 +330,12 @@ jobs:
 
       - name: Build the release loader
         timeout-minutes: 70
+        env:
+          PE_GIT_SHA: ${{ inputs.pe_git_sha }}
         run: |
           set -euo pipefail
           mkdir -p "${{ runner.temp }}/pe-loader"
-          vantio run bash scripts/gcp/build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine" "${{ runner.temp }}/pe-loader" 864289cb2c9c4135d74233c74c6655087de3f20d
+          vantio run bash scripts/gcp/build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine" "${{ runner.temp }}/pe-loader" "$PE_GIT_SHA"
 
       - name: Upload the loader for the proof job
         if: success()

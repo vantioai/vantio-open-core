@@ -22,6 +22,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "gcp-lab-enforcement-proof.yml"
 PROVISION = ROOT / ".github" / "workflows" / "gcp-lab-provision.yml"
 BUILD = ROOT / "scripts" / "gcp" / "build_pe_loader.sh"
 PIN = ep.PE_GIT_SHA
+MAIN_TIP = "b3567a2aa3d705e8214e1cc671d30c31b9ac1c98"
+DRAFT_TIP = "2d7b92949348478705545a9af660e2dbec3b94af"
+TIPS = (PIN, MAIN_TIP, DRAFT_TIP)
 GO = "zach-run-go-placeholder"
 HOST = "proof81"
 GATE = json.dumps({"expected_oop_usd": "0", "abort": False})
@@ -49,6 +52,16 @@ def _flip(text: str) -> str:
     return text[:-1] + last
 
 
+def _cli(command: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["python3", str(ROOT / "scripts/gcp/enforcement_proof.py"), command],
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env, "PATH": os.environ.get("PATH", "")},
+        check=False,
+    )
+
+
 def _cargo_workdir_is_checkout(workdir: str, volume: str, checkout: Path) -> bool:
     """True when cargo's workdir is the absolute checkout, not a bare /src mount."""
     root = str(checkout.resolve())
@@ -60,12 +73,31 @@ def _cargo_workdir_is_checkout(workdir: str, volume: str, checkout: Path) -> boo
 
 
 class PinAndOrderTests(unittest.TestCase):
-    def test_only_the_pinned_tip_passes(self) -> None:
-        self.assertTrue(ep.sha_ok(PIN))
-        self.assertEqual(len(PIN), 40)
+    def test_allowlisted_tips_pass_and_other_hex_fails(self) -> None:
+        tips = ep.read_allowlist()
+        self.assertEqual(tips, frozenset(TIPS))
+        self.assertEqual(ep.ALLOWLIST_FILE.name, "pe-git-sha-allowlist.txt")
+        for tip in TIPS:
+            self.assertEqual(len(tip), 40)
+            self.assertTrue(ep.sha_ok(tip))
+            self.assertEqual(ep.precheck(_base_env(PE_GIT_SHA=tip)), 0)
+            recorded = _cli("sha", {"PE_GIT_SHA": tip})
+            self.assertEqual(recorded.returncode, 0, recorded.stderr)
+            self.assertIn(f"sha={tip}", recorded.stdout)
+            self.assertNotIn(GO, recorded.stdout + recorded.stderr)
+        other = "ab" * 20
+        self.assertEqual(len(other), 40)
+        self.assertFalse(ep.sha_ok(other))
         self.assertFalse(ep.sha_ok("ab" * 32))
         self.assertFalse(ep.sha_ok(PIN.upper()))
+        self.assertFalse(ep.sha_ok(PIN[:-1]))
+        self.assertFalse(ep.sha_ok(PIN + "\n"))
         self.assertFalse(ep.sha_ok(""))
+        self.assertEqual(ep.precheck(_base_env(PE_GIT_SHA=other)), 1)
+        hidden = _cli("precheck", _base_env(PE_GIT_SHA=other))
+        self.assertEqual(hidden.returncode, 1)
+        self.assertNotIn(other, hidden.stdout + hidden.stderr)
+        self.assertIn("pe_git_sha", hidden.stderr)
 
     def test_one_flipped_nibble_is_rejected(self) -> None:
         flipped = _flip(PIN)
@@ -74,6 +106,45 @@ class PinAndOrderTests(unittest.TestCase):
         self.assertFalse(ep.sha_ok(flipped))
         env = _base_env(PE_GIT_SHA=flipped)
         self.assertEqual(ep.precheck(env), 1)
+
+    def test_one_flipped_allowlist_byte_rejects_the_tip(self) -> None:
+        text = ep.ALLOWLIST_FILE.read_text(encoding="utf-8")
+        flipped = _flip(PIN)
+        mutated = text.replace(PIN, flipped, 1)
+        self.assertNotEqual(mutated, text)
+        allowed = ep.parse_allowlist(mutated)
+        self.assertNotIn(PIN, allowed)
+        self.assertFalse(ep.sha_ok(PIN, allowlist=allowed))
+        self.assertFalse(ep.sha_ok(flipped))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pe-git-sha-allowlist.txt"
+            path.write_text(PIN + "\n" + ("g" * 40) + "\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as caught:
+                ep.read_allowlist(path)
+            self.assertEqual(caught.exception.code, "pe_git_sha_allowlist")
+            self.assertFalse(ep.sha_ok(PIN, path=path))
+            with mock.patch.object(ep, "ALLOWLIST_FILE", path):
+                self.assertEqual(ep.precheck(_base_env()), 1)
+                self.assertEqual(ep.check_sha({"PE_GIT_SHA": PIN}), 1)
+        duplicate = PIN + "\n" + PIN + "\n"
+        with self.assertRaises(SystemExit) as caught:
+            ep.parse_allowlist(duplicate)
+        self.assertEqual(caught.exception.code, "pe_git_sha_allowlist")
+
+    def test_plan_records_the_dispatched_tip(self) -> None:
+        plan = ep.public_plan("full", DRAFT_TIP)
+        self.assertEqual(plan["pe_git_sha"], DRAFT_TIP)
+        with self.assertRaises(SystemExit) as caught:
+            ep.public_plan("full", _flip(DRAFT_TIP))
+        self.assertEqual(caught.exception.code, "pe_git_sha")
+        done = _cli("plan", _base_env(PE_GIT_SHA=MAIN_TIP))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(json.loads(done.stdout)["pe_git_sha"], MAIN_TIP)
+        self.assertNotIn(GO, done.stdout)
+        refused = _cli("plan", _base_env(PE_GIT_SHA="ab" * 20))
+        self.assertEqual(refused.returncode, 2)
+        self.assertNotIn("ab" * 20, refused.stdout + refused.stderr)
+        self.assertIn("pe_git_sha", refused.stderr)
 
     def test_bad_sha_is_not_printed(self) -> None:
         flipped = _flip(PIN)
@@ -144,6 +215,16 @@ class ObservationTests(unittest.TestCase):
         )
         with self.assertRaises(SystemExit):
             ep.allow_evidence({"live_enforcement": "PROVEN", "reboot_restored": "NOT_RUN"})
+        for tip in TIPS:
+            kept = ep.allow_evidence(
+                {"live_enforcement": "NOT_PROVEN", "pe_git_sha": tip, "reboot_restored": "NOT_RUN"}
+            )
+            self.assertEqual(kept["pe_git_sha"], tip)
+        with self.assertRaises(SystemExit) as caught:
+            ep.allow_evidence(
+                {"live_enforcement": "NOT_PROVEN", "pe_git_sha": _flip(PIN), "reboot_restored": "NOT_RUN"}
+            )
+        self.assertEqual(caught.exception.code, "pe_git_sha")
 
     def test_loader_lib_line_mutation_fails(self) -> None:
         good = "\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x1)\n"
@@ -247,6 +328,7 @@ class RunTests(unittest.TestCase):
         self.assertLess(post, expired)
         self.assertIn("proof.env", fake.files)
         self.assertEqual(body["live_enforcement"], "NOT_PROVEN")
+        self.assertEqual(body["pe_git_sha"], PIN)
         self.assertEqual(body["result"], "OBSERVED")
         self.assertNotIn(GO, json.dumps(body))
         self.assertIn("compare=PASS", body["observations"])
@@ -288,8 +370,11 @@ class RunTests(unittest.TestCase):
                 DEB_DIR=str(debs),
                 EVIDENCE_DIR=str(root / "evidence"),
                 RUNNER_TEMP=str(root),
+                PE_GIT_SHA=DRAFT_TIP,
             )
             self.assertEqual(ep.run_proof(env, fake), 2)  # type: ignore[arg-type]
+            body = json.loads((root / "evidence" / "enforcement-proof.json").read_text(encoding="utf-8"))
+        self.assertEqual(body["pe_git_sha"], DRAFT_TIP)
         self.assertFalse(any("reboot --force" in command for command in fake.commands))
 
 
@@ -336,15 +421,16 @@ class CreateAndBuildTests(unittest.TestCase):
             )
             self.assertEqual(done.returncode, 1)
             self.assertIn("pe_git_sha", done.stderr)
+            self.assertNotIn("0" * 40, done.stdout + done.stderr)
             self.assertFalse(log.exists())
             text = BUILD.read_text(encoding="utf-8")
-            self.assertIn(f"expected={PIN}", text)
-            mutated = text.replace(
-                'if [[ "$pin" != "$expected" ]]; then\n  echo "pe_git_sha" >&2\n  exit 1\nfi\n',
-                "",
-                1,
-            )
+            self.assertIn("pe-git-sha-allowlist.txt", text)
+            self.assertNotIn(PIN, text)
+            start = text.index('if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]]')
+            end = text.index("src=$(cd", start)
+            mutated = text[:start] + text[end:]
             self.assertNotEqual(mutated, text)
+            self.assertNotIn("pe_git_sha", mutated)
             mutated_path = root / "mutated.sh"
             mutated_path.write_text(mutated, encoding="utf-8")
             broken = subprocess.run(
@@ -358,11 +444,54 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertNotEqual(broken.returncode, 0)
             self.assertFalse(log.exists())
 
-    def test_script_pin_byte_must_match_the_constant(self) -> None:
-        text = BUILD.read_text(encoding="utf-8")
-        self.assertIn(f"expected={PIN}", text)
-        mutated = text.replace(PIN, _flip(PIN), 1)
-        self.assertNotIn(f"expected={PIN}", mutated)
+    def test_allowlist_byte_mutation_does_not_start_docker(self) -> None:
+        text = ep.ALLOWLIST_FILE.read_text(encoding="utf-8")
+        flipped = _flip(PIN)
+        mutated_allow = text.replace(PIN, flipped, 1)
+        self.assertNotEqual(mutated_allow, text)
+        self.assertFalse(ep.sha_ok(PIN, allowlist=ep.parse_allowlist(mutated_allow)))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bindir = root / "bin"
+            bindir.mkdir()
+            log = root / "docker.log"
+            docker = bindir / "docker"
+            docker.write_text(
+                "#!/bin/sh\necho called >> \"$DOCKER_LOG\"\nexit 99\n",
+                encoding="utf-8",
+            )
+            docker.chmod(0o755)
+            script = root / "build_pe_loader.sh"
+            script.write_text(BUILD.read_text(encoding="utf-8"), encoding="utf-8")
+            (root / "pe-git-sha-allowlist.txt").write_text(mutated_allow, encoding="utf-8")
+            env = {
+                "PATH": f"{bindir}:{os.environ.get('PATH', '')}",
+                "DOCKER_LOG": str(log),
+                "HOME": str(root),
+            }
+            done = subprocess.run(
+                ["bash", str(script), str(root / "src"), str(root / "out"), PIN],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_git_sha", done.stderr)
+            self.assertNotIn(PIN, done.stdout + done.stderr)
+            self.assertNotIn(flipped, done.stdout + done.stderr)
+            self.assertFalse(log.exists())
+            (root / "pe-git-sha-allowlist.txt").write_text(PIN + "\n" + ("g" * 40) + "\n", encoding="utf-8")
+            invalid = subprocess.run(
+                ["bash", str(script), str(root / "src"), str(root / "out"), PIN],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(invalid.returncode, 1)
+            self.assertIn("pe_git_sha", invalid.stderr)
+            self.assertFalse(log.exists())
 
     def _fake_tools(self, root: Path, pin: str) -> dict[str, str]:
         bindir = root / "bin"
@@ -449,6 +578,42 @@ class CreateAndBuildTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine"', workflow)
         self.assertNotIn("build_pe_loader.sh phantom-engine ", workflow)
+        self.assertIn('"$PE_GIT_SHA"', workflow)
+        self.assertNotIn(f"pe-loader\" {PIN}", workflow)
+
+    def test_checked_out_head_must_be_the_dispatched_tip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "phantom-engine").mkdir()
+            env = self._fake_tools(root, DRAFT_TIP)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_head", done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+
+    def test_draft_tip_is_not_rejected_before_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._checkout(root / "phantom-engine")
+            env = self._fake_tools(root, DRAFT_TIP)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", DRAFT_TIP],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("loader_built=1", done.stdout)
+            self.assertTrue((root / "docker.log").is_file())
 
     def test_missing_manifest_does_not_start_docker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -480,6 +645,10 @@ class CreateAndBuildTests(unittest.TestCase):
             self._checkout(checkout)
             script = root / "mutated.sh"
             script.write_text(mutated, encoding="utf-8")
+            (root / "pe-git-sha-allowlist.txt").write_text(
+                ep.ALLOWLIST_FILE.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
             env = self._fake_tools(root, PIN)
             done = subprocess.run(
                 ["bash", str(script), "phantom-engine", "out", PIN],
@@ -591,6 +760,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(trigger), ["workflow_dispatch"])
         inputs = trigger["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["pe_git_sha"]["default"], PIN)
+        self.assertEqual(text.count(PIN), 1)
+        self.assertNotIn(MAIN_TIP, text)
+        self.assertNotIn(DRAFT_TIP, text)
+        self.assertIn("pe-git-sha-allowlist.txt", text)
         self.assertNotIn("seal", inputs)
         self.assertNotIn("t2112u", inputs)
         self.assertEqual(inputs["proof_slice"]["default"], "full")
@@ -603,6 +776,31 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("gh workflow", text)
         self.assertNotIn("production-signing-key", text)
         self.assertNotIn(GO, text)
+        self.assertEqual(doc["permissions"]["contents"], "read")
+        self.assertEqual(doc["permissions"]["id-token"], "write")
+        self.assertEqual(doc["jobs"]["build"]["environment"], "w3-lab-auto")
+        self.assertEqual(doc["concurrency"]["group"], "vantio-gce-slot")
+        self.assertIs(doc["concurrency"]["cancel-in-progress"], False)
+        self.assertNotIn("google-github-actions/auth@", text)
+        steps = doc["jobs"]["build"]["steps"]
+        names = [step["name"] for step in steps]
+        refuse_at = names.index("Refuse a Phantom Engine tip that is not allowlisted")
+        checkout_at = names.index("Checkout the Phantom Engine commit")
+        record_at = names.index("Record the Phantom Engine commit")
+        self.assertLess(refuse_at, checkout_at)
+        self.assertLess(checkout_at, record_at)
+        self.assertIn("enforcement_proof.py sha", steps[refuse_at]["run"])
+        self.assertEqual(steps[refuse_at]["env"]["PE_GIT_SHA"], "${{ inputs.pe_git_sha }}")
+        self.assertEqual(steps[checkout_at]["with"]["ref"], "${{ inputs.pe_git_sha }}")
+        self.assertEqual(steps[checkout_at]["with"]["repository"], "vantioai/vantio-phantom-engine")
+        self.assertIs(steps[checkout_at]["with"]["persist-credentials"], False)
+        self.assertEqual(steps[checkout_at]["with"]["token"], "${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}")
+        self.assertIn("rev-parse HEAD", steps[record_at]["run"])
+        self.assertIn("pe_git_sha=", steps[record_at]["run"])
+        build = steps[names.index("Build the release loader")]
+        self.assertIn('"$PE_GIT_SHA"', build["run"])
+        self.assertEqual(build["env"]["PE_GIT_SHA"], "${{ inputs.pe_git_sha }}")
+        self.assertEqual(doc["jobs"]["prove"]["with"]["pe_git_sha"], "${{ inputs.pe_git_sha }}")
         mutated = text.replace("expected_oop_usd == '0'", "expected_oop_usd == '1'")
         mutated_doc = yaml.safe_load(mutated)
         self.assertNotIn("expected_oop_usd == '0'", mutated_doc["jobs"]["prove"]["if"])
@@ -613,6 +811,10 @@ class WorkflowTests(unittest.TestCase):
             "compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
             sheet,
         )
+        self.assertIn("pe-git-sha-allowlist.txt", sheet)
+        self.assertIn("fails before a VM", sheet)
+        for tip in TIPS:
+            self.assertIn(tip, sheet)
 
 
 if __name__ == "__main__":
