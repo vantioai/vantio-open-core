@@ -77,13 +77,25 @@ wired here:
 
 `scripts/gcp/build_pe_loader.sh` no longer says the only guest is an
 `e2-micro`. The proof path still passes three arguments, and that call
-still builds in `ubuntu:24.04` for the proof guest, which is an
-`e2-micro`. Stage 4 passes a fourth argument: `debian13` selects
-`debian:13`, and `ubuntu2604` selects `ubuntu:26.04`. The stage 4
-machine type is `e2-standard-2`. Those containers are the distro
-userspace. They are not a boot of kernel `6.12.116+deb13-cloud-amd64`
-or `7.0.0-1016-gcp`. `ubuntu:24.04` is not the stage 4 build host. No
-boot has shown a 24.04 binary runs on these guests. The installer pin
+still builds in the Ubuntu 24.04 image for the proof guest, which is an
+`e2-micro`. Stage 4 passes a fourth argument: `debian13` selects the
+Debian 13 image, and `ubuntu2604` selects the Ubuntu 26.04 image. Each
+image is `tag@sha256` of the linux/amd64 manifest read from
+`registry-1.docker.io` on 2026-11-12. The stage 4 machine type is
+`e2-standard-2`. Those containers are the distro userspace. They are
+not a boot of kernel `6.12.116+deb13-cloud-amd64` or `7.0.0-1016-gcp`.
+The Ubuntu 24.04 image is not the stage 4 build host. No boot has shown
+a 24.04 binary runs on these guests. Apt uses
+`snapshot.ubuntu.com/ubuntu/20261111T000000Z` for both Ubuntu images and
+`snapshot.debian.org` at `20261112T025704Z` for Debian 13. Those
+timestamps were read on 2026-11-12. The six package names were present
+in each snapshot's main index. The script does not apt-get from the
+live mirror. rustup is `1.29.3` from
+`static.rust-lang.org/rustup/release-stable.toml`, sha256
+`b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55`,
+checked before `rustup-init` runs. The toolchain is `nightly-2026-11-12`.
+`RUSTUP_TOOLCHAIN` is set to that date so a floating `nightly` channel
+in the Phantom Engine toolchain file is not the pin. The installer pin
 read on 2026-11-12 is cargo-binstall `v1.27.0` and bpf-linker `0.13.0`.
 The script records sha256 `b2e4b70fcddc5bd6fd90c5cf8dc17b4cf0ea54a3db16c65ee0307f42c9bd3187`
 for the binstall tarball and sha256
@@ -265,10 +277,11 @@ on the file this change edits. The value assigned is unchanged.
   the package-page values. They were not replaced from a boot.
 - `STAGE4_DEB_BOOT` is unset. A non-refuse execute path raises `deb_boot`
   before create. The Ubuntu 24.04 debs were not booted on either guest.
-- The loader build was not executed. `debian:13` and `ubuntu:26.04` were
-  not started. cargo-binstall `v1.27.0` and bpf-linker `0.13.0` were not
-  downloaded. The proof path's three-argument call still selects
-  `ubuntu:24.04` in the unit test, which uses a fake `docker`.
+- The loader build was not executed. The digest-pinned images were not
+  started. cargo-binstall `v1.27.0`, bpf-linker `0.13.0`, and rustup
+  `1.29.3` were not downloaded by the unit test. That test uses a fake
+  `docker` and checks the digest ref in the recorded arguments. `cargo
+  build` still fetches crates. Those crate bytes are not pinned here.
 - DS checks are not wired. The hold exits 0. The overall grade is
   INCOMPLETE, not PASS, including when every harness phase is accepted.
 - The founder go was not supplied. An empty `run_go` fails the guard

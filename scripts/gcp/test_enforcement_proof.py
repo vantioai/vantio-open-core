@@ -447,7 +447,10 @@ class CreateAndBuildTests(unittest.TestCase):
             volumes = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
             self.assertTrue(_cargo_workdir_is_checkout(workdir, f"{workdir}:{workdir}:ro", checkout))
             self.assertIn(f"{workdir}:{workdir}:ro", volumes)
-            self.assertIn("ubuntu:24.04", args)
+            self.assertIn(
+                "ubuntu:24.04@sha256:77eb101c607d6e3d4f5ad0c8a02c2136c689b98aba1f359e6502ba517e5c57ec",
+                args,
+            )
             self.assertNotIn("debian:13", args)
             self.assertNotIn("/src", workdir)
             self.assertTrue((Path(workdir) / "Cargo.toml").is_file())
@@ -474,14 +477,44 @@ class CreateAndBuildTests(unittest.TestCase):
         self.assertLess(second_check, text.index('tar --zstd -C "$HOME/.cargo/bin" -xf'))
         self.assertNotIn("install-from-binstall-release.sh", text)
         self.assertNotIn("cargo-binstall/main", text)
+        self.assertNotIn("sh.rustup.rs", text)
+        self.assertNotIn("--default-toolchain nightly --", text)
+        self.assertIn("rustup_version=1.29.3", text)
+        self.assertIn("b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55", text)
+        self.assertIn("rustup_toolchain=nightly-2026-11-12", text)
+        self.assertIn("20261111T000000Z", text)
+        self.assertIn("20261112T025704Z", text)
+        self.assertIn(
+            "ubuntu:24.04@sha256:77eb101c607d6e3d4f5ad0c8a02c2136c689b98aba1f359e6502ba517e5c57ec",
+            text,
+        )
+        self.assertIn(
+            "debian:13@sha256:bfc36aecdece0387418759dba474aa856c026ca8087da3606b41b90ab0509c99",
+            text,
+        )
+        self.assertIn(
+            "ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6",
+            text,
+        )
+        rustup_check = text.index('"$RUSTUP_SHA256" /tmp/rustup-init | sha256sum -c -')
+        self.assertLess(rustup_check, text.index("/tmp/rustup-init -y"))
+        self.assertLess(text.index("printf \"%s\\n\" \"$APT_SOURCES\""), text.index("apt-get update"))
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             checkout = root / "phantom-engine"
             self._checkout(checkout)
             env = self._fake_tools(root, PIN)
             for guest, image, other in (
-                ("debian13", "debian:13", "ubuntu:24.04"),
-                ("ubuntu2604", "ubuntu:26.04", "ubuntu:24.04"),
+                (
+                    "debian13",
+                    "debian:13@sha256:bfc36aecdece0387418759dba474aa856c026ca8087da3606b41b90ab0509c99",
+                    "ubuntu:24.04",
+                ),
+                (
+                    "ubuntu2604",
+                    "ubuntu:26.04@sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6",
+                    "ubuntu:24.04",
+                ),
             ):
                 done = subprocess.run(
                     ["bash", str(BUILD), "phantom-engine", "out", PIN, guest],
