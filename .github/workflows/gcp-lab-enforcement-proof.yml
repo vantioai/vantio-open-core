@@ -313,10 +313,6 @@ jobs:
             echo "pe_head" >&2
             exit 1
           fi
-          if PE_GIT_SHA="$head" python3 scripts/gcp/enforcement_proof.py cleared; then
-            echo "pe_ancestor=cleared"
-            exit 0
-          fi
           if [ -z "${PE_READ_TOKEN:-}" ]; then
             echo "pe_read" >&2
             exit 1

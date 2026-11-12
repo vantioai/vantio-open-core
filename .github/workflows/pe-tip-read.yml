@@ -1,0 +1,50 @@
+name: Read a Phantom Engine tip
+
+# workflow_dispatch only. Zach clicks this. It does not run on pull_request.
+# The only read is scripts/gcp/pe_tip_read.sh. No cost gate, no GCP auth, no VM.
+# It passes only when git ls-remote succeeds and FETCH_HEAD equals the sha.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pe_git_sha:
+        description: Allowlisted Phantom Engine git tip. Full 40 lowercase hex on scripts/gcp/pe-git-sha-allowlist.txt. Not a seal.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    name: Read the allowlisted commit
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    environment: w3-lab-auto
+    timeout-minutes: 15
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Refuse static cloud keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Read the requested Phantom Engine commit
+        env:
+          PE_READ_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+          PE_READ_MODE: proof
+          PE_READ_SHA: ${{ inputs.pe_git_sha }}
+        run: bash scripts/gcp/pe_tip_read.sh

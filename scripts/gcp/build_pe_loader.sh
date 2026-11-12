@@ -20,7 +20,6 @@ if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]] || [[ ! -f "$allowlist" ]]; then
   exit 1
 fi
 pin_ok=0
-pin_cleared=0
 seen=0
 seen_shas=" "
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -28,28 +27,17 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   case "$line" in
     ""|\#*) continue ;;
   esac
-  entry=$line
-  cleared=0
-  if [[ "$line" == *" cleared" ]]; then
-    entry=${line%" cleared"}
-    cleared=1
-  fi
-  if [[ ! "$entry" =~ ^[0-9a-f]{40}$ ]]; then
-    echo "pe_git_sha" >&2
-    exit 1
-  fi
-  if [[ "$line" != "$entry" && "$line" != "$entry cleared" ]]; then
+  if [[ ! "$line" =~ ^[0-9a-f]{40}$ ]]; then
     echo "pe_git_sha" >&2
     exit 1
   fi
   case "$seen_shas" in
-    *" $entry "*) echo "pe_git_sha" >&2; exit 1 ;;
+    *" $line "*) echo "pe_git_sha" >&2; exit 1 ;;
   esac
-  seen_shas="$seen_shas$entry "
+  seen_shas="$seen_shas$line "
   seen=1
-  if [[ "$entry" == "$pin" ]]; then
+  if [[ "$line" == "$pin" ]]; then
     pin_ok=1
-    pin_cleared=$cleared
   fi
 done < "$allowlist"
 if [[ "$seen" -ne 1 || "$pin_ok" -ne 1 ]]; then
@@ -69,7 +57,7 @@ if [[ "$head" != "$pin" ]]; then
   echo "pe_head" >&2
   exit 1
 fi
-if [[ "$pin_cleared" -ne 1 ]] && ! git -C "$src" merge-base --is-ancestor "$head" origin/main; then
+if ! git -C "$src" merge-base --is-ancestor "$head" origin/main; then
   echo "pe_ancestor" >&2
   exit 1
 fi

@@ -128,7 +128,7 @@ LAB_FILES = (
     "uninstall.txt",
     "uninstall-negative.txt",
 )
-USAGE = "usage: enforcement_proof.py precheck|sha|cleared|ancestor|plan|run|teardown"
+USAGE = "usage: enforcement_proof.py precheck|sha|ancestor|plan|run|teardown"
 REBOOT_COMMAND = (
     "sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true; "
     "sync; "
@@ -203,24 +203,22 @@ def proof_minutes(value: object) -> int:
 
 
 def parse_allowlist(text: str) -> dict[str, bool]:
-    """Accepted tips mapped to the cleared flag.
+    """Accepted tips. Blank lines and # comments are ignored.
 
-    Blank lines and # comments are ignored. A tip line is 40 lowercase hex.
-    ``<sha> cleared`` is an explicit exception to the ancestor-of-main check.
-    Any other line, including padding or a shell payload, refuses the file.
+    A tip line is exactly 40 lowercase hex. Every listed commit must be an
+    ancestor of Phantom Engine main. Any other line, including a ``cleared``
+    suffix, padding, or a shell payload, refuses the file.
     """
     found: dict[str, bool] = {}
     for raw in text.splitlines():
         line = raw[:-1] if raw.endswith("\r") else raw
         if not line or line.startswith("#"):
             continue
-        cleared = line.endswith(" cleared")
-        sha = line[: -len(" cleared")] if cleared else line
-        if SHA_RE.fullmatch(sha) is None or line not in {sha, f"{sha} cleared"}:
+        if SHA_RE.fullmatch(line) is None:
             raise SystemExit("pe_git_sha_allowlist")
-        if sha in found:
+        if line in found:
             raise SystemExit("pe_git_sha_allowlist")
-        found[sha] = cleared
+        found[line] = False
     if not found:
         raise SystemExit("pe_git_sha_allowlist")
     return found
@@ -247,7 +245,7 @@ def sha_ok(value: object, *, path: Path | None = None, allowlist: Mapping[str, b
 
 
 def tip_may_build(sha: object, ancestor_flag: str, allowlist: Mapping[str, bool] | None = None) -> bool:
-    """A listed tip may be built when it is an ancestor of PE main, or its entry is cleared."""
+    """A listed tip may be built only when it is an ancestor of PE main."""
     if not isinstance(sha, str) or SHA_RE.fullmatch(sha) is None:
         return False
     try:
@@ -256,8 +254,6 @@ def tip_may_build(sha: object, ancestor_flag: str, allowlist: Mapping[str, bool]
         return False
     if sha not in entries:
         return False
-    if entries[sha]:
-        return True
     return ancestor_flag == "yes"
 
 
@@ -537,20 +533,8 @@ def check_sha(env: Mapping[str, str]) -> int:
     return 0
 
 
-def cleared_tip(env: Mapping[str, str]) -> int:
-    """Exit 0 only when the tip's allowlist entry is explicitly marked cleared."""
-    value = env.get("PE_GIT_SHA", "")
-    try:
-        entries = read_allowlist()
-    except SystemExit:
-        return 1
-    if isinstance(value, str) and entries.get(value) is True:
-        return 0
-    return 1
-
-
 def ancestor_tip(env: Mapping[str, str]) -> int:
-    """Exit 0 when the tip may be built. PE_ANCESTOR is yes, no, or cleared."""
+    """Exit 0 when the tip is allowlisted and PE_ANCESTOR is yes."""
     if tip_may_build(env.get("PE_GIT_SHA", ""), env.get("PE_ANCESTOR", "")):
         return 0
     print("pe_ancestor", file=sys.stderr)
@@ -1051,8 +1035,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             return precheck(os.environ)
         if command == "sha":
             return check_sha(os.environ)
-        if command == "cleared":
-            return cleared_tip(os.environ)
         if command == "ancestor":
             return ancestor_tip(os.environ)
         if command == "plan":

@@ -152,7 +152,10 @@ class PinAndOrderTests(unittest.TestCase):
             self.assertIn("pe_git_sha", hidden.stderr)
         self.assertTrue(ep.tip_may_build(MAIN_TIP, "yes", {MAIN_TIP: False}))
         self.assertFalse(ep.tip_may_build(MAIN_TIP, "no", {MAIN_TIP: False}))
-        self.assertTrue(ep.tip_may_build(PIN, "no", {PIN: True}))
+        self.assertFalse(ep.tip_may_build(PIN, "no", {PIN: True}))
+        with self.assertRaises(SystemExit) as caught:
+            ep.parse_allowlist(PIN + " cleared\n")
+        self.assertEqual(caught.exception.code, "pe_git_sha_allowlist")
         self.assertFalse(ep.tip_may_build(DRAFT_TIP, "yes", {PIN: False, MAIN_TIP: False}))
 
     def test_plan_records_the_dispatched_tip(self) -> None:
@@ -719,7 +722,7 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertFalse((root / "docker.log").exists())
             self.assertFalse(side.exists())
 
-    def test_non_ancestor_is_rejected_unless_the_entry_is_cleared(self) -> None:
+    def test_non_ancestor_and_a_cleared_suffix_are_refused_before_docker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._checkout(root / "phantom-engine")
@@ -750,9 +753,9 @@ class CreateAndBuildTests(unittest.TestCase):
                 env=env,
                 check=False,
             )
-            self.assertEqual(cleared.returncode, 0, cleared.stderr)
-            self.assertTrue((root / "docker.log").is_file())
-            self.assertEqual((root / "out" / "build-sha").read_text(encoding="utf-8"), PIN + "\n")
+            self.assertEqual(cleared.returncode, 1)
+            self.assertIn("pe_git_sha", cleared.stderr)
+            self.assertFalse((root / "docker.log").exists())
 
     def test_allowlist_and_input_injection_does_not_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -994,7 +997,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(record_at, ancestor_at)
         self.assertLess(ancestor_at, build_at)
         self.assertIn("merge-base --is-ancestor", steps[ancestor_at]["run"])
-        self.assertIn("enforcement_proof.py cleared", steps[ancestor_at]["run"])
+        self.assertNotIn("enforcement_proof.py cleared", steps[ancestor_at]["run"])
+        self.assertNotIn("pe_ancestor=cleared", text)
         self.assertNotIn("gcloud", steps[ancestor_at]["run"])
         build = steps[names.index("Build the release loader")]
         self.assertIn('"$PE_GIT_SHA"', build["run"])
@@ -1019,8 +1023,22 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("pe-git-sha-allowlist.txt", sheet)
         self.assertIn("fails before a VM", sheet)
         self.assertIn("ancestor", sheet)
-        self.assertIn("cleared", sheet)
+        self.assertNotIn("cleared", sheet)
         self.assertNotIn(DRAFT_TIP, sheet)
+        read_workflow = yaml.safe_load((ROOT / ".github/workflows/pe-tip-read.yml").read_text(encoding="utf-8"))
+        self.assertEqual(list(read_workflow[True]), ["workflow_dispatch"])
+        self.assertEqual(read_workflow["permissions"], {"contents": "read"})
+        self.assertNotIn("id-token", read_workflow["permissions"])
+        read_job = read_workflow["jobs"]["read"]
+        self.assertEqual(read_job["environment"], "w3-lab-auto")
+        read_text = (ROOT / ".github/workflows/pe-tip-read.yml").read_text(encoding="utf-8")
+        self.assertIn("bash scripts/gcp/pe_tip_read.sh", read_text)
+        self.assertIn("PE_READ_MODE: proof", read_text)
+        self.assertIn("PE_READ_SHA: ${{ inputs.pe_git_sha }}", read_text)
+        self.assertNotIn("google-github-actions/auth", read_text)
+        self.assertNotIn("gcp-lab-cost-gate.yml", read_text)
+        self.assertNotIn("gcloud", read_text)
+        self.assertNotIn("id-token:", read_text)
         for tip in TIPS:
             self.assertIn(tip, sheet)
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")

@@ -17,7 +17,7 @@ Hold. Zach merges this workflow to `main`, then Zach clicks `workflow_dispatch`.
 | Project | `vantio-lab-oct08` |
 | Zone | `us-central1-a` |
 | Guest | Ubuntu 24.04, image family `ubuntu-2404-lts-amd64`, machine `e2-micro`, no public IP, no guest service account, OS Login, IAP |
-| Git tip | One full 40-character lowercase hex commit from `scripts/gcp/pe-git-sha-allowlist.txt`: `864289cb2c9c4135d74233c74c6655087de3f20d` or `b3567a2aa3d705e8214e1cc671d30c31b9ac1c98`. The commit must be an ancestor of Phantom Engine `main`, unless that allowlist line ends with ` cleared`. |
+| Git tip | One full 40-character lowercase hex commit from `scripts/gcp/pe-git-sha-allowlist.txt`: `864289cb2c9c4135d74233c74c6655087de3f20d` or `b3567a2aa3d705e8214e1cc671d30c31b9ac1c98`. Every allowlisted commit must be an ancestor of Phantom Engine `main`. |
 | Lab directory | `/var/lib/vantio-enforcement-proof` |
 
 `gcp-lab-provision.yml` is the wrong path. Its `seal` input is 64 hex. This tip is 40 hex and is not a seal. Do not type the tip into that workflow.
