@@ -953,6 +953,18 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(doc["permissions"]["contents"], "read")
         self.assertEqual(doc["permissions"]["id-token"], "write")
         self.assertEqual(doc["jobs"]["build"]["environment"], "w3-lab-auto")
+        self.assertEqual(doc["jobs"]["precheck"]["environment"], "w3-lab-auto")
+        precheck_steps = doc["jobs"]["precheck"]["steps"]
+        precheck_names = [step["name"] for step in precheck_steps]
+        read_at = precheck_names.index("Read the requested Phantom Engine commit")
+        self.assertLess(precheck_names.index("Check the proof inputs"), read_at)
+        read_step = precheck_steps[read_at]
+        self.assertNotIn("continue-on-error", read_step)
+        self.assertEqual(read_step["env"]["PE_READ_MODE"], "proof")
+        self.assertEqual(read_step["env"]["PE_READ_SHA"], "${{ inputs.pe_git_sha }}")
+        self.assertEqual(read_step["env"]["PE_READ_TOKEN"], "${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}")
+        self.assertIn("bash scripts/gcp/pe_tip_read.sh", read_step["run"])
+        self.assertEqual(doc["jobs"]["gate"]["needs"], "precheck")
         self.assertEqual(doc["concurrency"]["group"], "vantio-gce-slot")
         self.assertIs(doc["concurrency"]["cancel-in-progress"], False)
         self.assertNotIn("google-github-actions/auth@", text)
@@ -1013,8 +1025,10 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn(tip, sheet)
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("bash scripts/gcp/pe_tip_read.sh", ci)
+        self.assertIn("PE_READ_MODE: pr_ci", ci)
         self.assertIn("secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN", ci)
         reader = (ROOT / "scripts/gcp/pe_tip_read.sh").read_text(encoding="utf-8")
+        self.assertIn("pe_read=NOT_PROVEN_token_unavailable_in_pr_ci", reader)
         self.assertNotIn("gcloud", reader)
         self.assertNotIn("compute instances", reader)
 
@@ -1046,6 +1060,10 @@ class PhantomReadTests(unittest.TestCase):
             "    ;;\n"
             "  init) ;;\n"
             "  fetch)\n"
+            "    if [ \"${PE_FETCH_FAIL:-0}\" = \"1\" ]; then\n"
+            "      echo \"fatal: repository not found\" >&2\n"
+            "      exit 1\n"
+            "    fi\n"
             "    sha=\n"
             "    for arg in \"$@\"; do sha=$arg; done\n"
             "    printf '%s\\n' \"$sha\" > \"$PE_FETCH_FILE\"\n"
@@ -1104,6 +1122,103 @@ class PhantomReadTests(unittest.TestCase):
             self.assertIn("ls-remote", log)
             self.assertNotIn("fetch", log)
             self.assertNotIn("not-a-real-token", done.stdout + done.stderr)
+
+    def test_pr_ci_missing_token_is_not_a_pass_and_does_not_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._fake_git(root)
+            env.pop("PE_READ_TOKEN")
+            env["PE_READ_MODE"] = "pr_ci"
+            done = subprocess.run(
+                ["bash", str(ROOT / "scripts/gcp/pe_tip_read.sh")],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0)
+            self.assertEqual(done.stdout.strip(), "pe_read=NOT_PROVEN_token_unavailable_in_pr_ci")
+            self.assertNotIn("pe_read=ok", done.stdout)
+            self.assertFalse((root / "git.log").exists())
+
+    def test_proof_read_fails_closed_without_a_token_or_a_fetch(self) -> None:
+        script = str(ROOT / "scripts/gcp/pe_tip_read.sh")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._fake_git(root)
+            env.pop("PE_READ_TOKEN")
+            env["PE_READ_MODE"] = "proof"
+            env["PE_READ_SHA"] = PIN
+            missing = subprocess.run(
+                ["bash", script],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(missing.returncode, 1)
+            self.assertIn("pe_read=token_missing", missing.stdout)
+            self.assertNotIn("NOT_PROVEN_token_unavailable_in_pr_ci", missing.stdout)
+            self.assertFalse((root / "git.log").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            side = root / "pwned"
+            env = self._fake_git(root)
+            env["PE_READ_MODE"] = "proof"
+            env["PE_READ_SHA"] = f"$(touch {side})"
+            refused = subprocess.run(
+                ["bash", script],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(refused.returncode, 1)
+            self.assertIn("pe_read=sha", refused.stderr)
+            self.assertFalse(side.exists())
+            self.assertFalse((root / "git.log").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._fake_git(root)
+            env["PE_READ_MODE"] = "proof"
+            env["PE_READ_SHA"] = PIN
+            env["PE_FETCH_FAIL"] = "1"
+            failed = subprocess.run(
+                ["bash", script],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(failed.returncode, 1)
+            self.assertIn("pe_read=404", failed.stdout)
+            self.assertNotIn("pe_read=ok", failed.stdout)
+            log = (root / "git.log").read_text(encoding="utf-8")
+            self.assertIn("ls-remote", log)
+            self.assertIn("fetch --depth=1", log)
+            self.assertIn(PIN, log)
+
+    def test_proof_read_fetches_only_the_requested_sha(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._fake_git(root)
+            env["PE_READ_MODE"] = "proof"
+            env["PE_READ_SHA"] = PIN
+            done = subprocess.run(
+                ["bash", str(ROOT / "scripts/gcp/pe_tip_read.sh")],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("pe_read=ls-remote", done.stdout)
+            self.assertIn(f"pe_read=ok sha={PIN}", done.stdout)
+            self.assertNotIn(f"pe_read=ok sha={MAIN_TIP}", done.stdout)
+            log = (root / "git.log").read_text(encoding="utf-8")
+            self.assertEqual(log.count("fetch --depth=1"), 1)
+            self.assertIn(PIN, log)
+            self.assertNotIn("not-a-real-token", done.stdout + done.stderr + log)
 
     def test_missing_token_does_not_call_git(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -77,6 +77,7 @@ jobs:
   precheck:
     name: Check dispatch inputs
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    environment: w3-lab-auto
     timeout-minutes: 15
     steps:
       - name: Require main on vantio-open-core
@@ -173,6 +174,13 @@ jobs:
           set -euo pipefail
           vantio run python3 scripts/gcp/enforcement_proof.py precheck
           vantio run python3 scripts/gcp/enforcement_proof.py plan
+
+      - name: Read the requested Phantom Engine commit
+        env:
+          PE_READ_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+          PE_READ_MODE: proof
+          PE_READ_SHA: ${{ inputs.pe_git_sha }}
+        run: bash scripts/gcp/pe_tip_read.sh
 
       - name: Collect Optics observation log
         if: always()

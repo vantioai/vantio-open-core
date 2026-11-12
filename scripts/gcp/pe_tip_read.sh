@@ -7,12 +7,32 @@ if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" || -n "${GCP_SA_KEY:-}" ]]; then
   echo "static_credentials" >&2
   exit 1
 fi
-if [[ -z "${PE_READ_TOKEN:-}" || "$PE_READ_TOKEN" == *$'\n'* ]]; then
+mode=${PE_READ_MODE:-proof}
+if [[ -n "${PE_READ_TOKEN:-}" && "$PE_READ_TOKEN" == *$'\n'* ]]; then
+  echo "pe_read=token_missing" >&2
+  exit 1
+fi
+if [[ -z "${PE_READ_TOKEN:-}" ]]; then
+  if [[ "$mode" == "pr_ci" ]]; then
+    echo "pe_read=NOT_PROVEN_token_unavailable_in_pr_ci"
+    exit 0
+  fi
   echo "pe_read=token_missing"
   exit 1
 fi
 
 here=$(cd "$(dirname "$0")" && pwd)
+if [[ -n "${PE_READ_SHA:-}" ]]; then
+  if [[ ! "$PE_READ_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "pe_read=sha" >&2
+    exit 1
+  fi
+  if ! PYTHONPATH="$here" python3 -c 'import os,sys,enforcement_proof as ep
+sys.exit(0 if ep.sha_ok(os.environ.get("PE_READ_SHA", "")) else 1)'; then
+    echo "pe_read=sha" >&2
+    exit 1
+  fi
+fi
 auth=$(printf 'x-access-token:%s' "$PE_READ_TOKEN" | base64 -w0)
 unset PE_READ_TOKEN
 repo=https://github.com/vantioai/vantio-phantom-engine.git
@@ -41,9 +61,13 @@ fi
 echo "pe_read=ls-remote"
 cat "$out"
 
-mapfile -t shas < <(PYTHONPATH="$here" python3 -c 'import enforcement_proof as ep
+if [[ -n "${PE_READ_SHA:-}" ]]; then
+  shas=("$PE_READ_SHA")
+else
+  mapfile -t shas < <(PYTHONPATH="$here" python3 -c 'import enforcement_proof as ep
 for sha in sorted(ep.read_allowlist()):
     print(sha)')
+fi
 if [[ "${#shas[@]}" -eq 0 ]]; then
   echo "pe_read=allowlist_empty"
   exit 1
