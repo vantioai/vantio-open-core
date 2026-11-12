@@ -80,8 +80,27 @@ printf '%s\n' "$head" > "$out_dir/build-sha"
 bash -n "$out_dir/enforcement_proof_lab.sh"
 sha256sum "$out_dir/enforcement_proof_lab.sh" | awk '{print $1}' > "$out_dir/script.sha256"
 
+# build.rs writes the eBPF object under $src/target. The checkout mount is
+# read-only, so that path has to exist and a writable directory is mounted on it.
+mkdir -p "$src/target"
+writable=$(mktemp -d /tmp/pe-target.XXXXXX)
+case "$writable" in
+  "$src"|"$src"/*) echo "pe_target" >&2; exit 1 ;;
+  /*) ;;
+  *) echo "pe_target" >&2; exit 1 ;;
+esac
+case "$src" in
+  "$writable"|"$writable"/*) echo "pe_target" >&2; exit 1 ;;
+esac
+# Cargo inside the container runs as root, so the target tree is root-owned.
+# A failing cleanup must not turn a built loader into a failed script.
+trap 'rm -rf "$writable" >/dev/null 2>&1 || true' EXIT
+
 docker run --rm \
+  -e "HOST_UID=$(id -u)" \
+  -e "HOST_GID=$(id -g)" \
   -v "$src:$src:ro" \
+  -v "$writable:$src/target" \
   -v "$out_dir:/out" \
   -w "$src" \
   ubuntu:24.04 \
@@ -102,6 +121,9 @@ if ldd /out/vantio-loader | grep -E "libssl|libcrypto"; then
   exit 1
 fi
 ldd /out/vantio-loader > /out/ldd.txt || true
+if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ]; then
+  chown -R "${HOST_UID}:${HOST_GID}" "$(pwd)/target" /out
+fi
 '
 
 if ! python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); d=p.read_bytes(); sys.exit(0 if d[:4]==b"\x7fELF" and b"libssl" not in pathlib.Path(sys.argv[2]).read_bytes() else 1)' "$out_dir/vantio-loader" "$out_dir/ldd.txt"; then
