@@ -225,6 +225,8 @@ jobs:
     name: Build the loader from the git tip
     needs: [precheck, gate]
     if: needs.precheck.result == 'success' && needs.gate.result == 'success' && needs.gate.outputs.expected_oop_usd == '0' && inputs.proof_slice != 'reboot-post'
+    outputs:
+      head_sha: ${{ steps.record.outputs.head_sha }}
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: w3-lab-auto
     timeout-minutes: 90
@@ -273,6 +275,7 @@ jobs:
           git -C phantom-engine remote set-url origin https://github.com/vantioai/vantio-phantom-engine.git
 
       - name: Record the Phantom Engine commit
+        id: record
         env:
           PE_GIT_SHA: ${{ inputs.pe_git_sha }}
         run: |
@@ -282,10 +285,39 @@ jobs:
             echo "pe_head" >&2
             exit 1
           fi
+          if [ -z "${GITHUB_OUTPUT:-}" ]; then
+            echo "pe_output" >&2
+            exit 1
+          fi
+          printf 'head_sha=%s\n' "$head" >> "$GITHUB_OUTPUT"
           printf 'pe_git_sha=%s\n' "$head"
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
             printf 'pe_git_sha=%s\n' "$head" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Require an ancestor of Phantom Engine main
+        env:
+          PE_READ_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+        run: |
+          set -euo pipefail
+          head=$(git -C phantom-engine rev-parse HEAD)
+          if [[ ! "$head" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "pe_head" >&2
+            exit 1
+          fi
+          if PE_GIT_SHA="$head" python3 scripts/gcp/enforcement_proof.py cleared; then
+            echo "pe_ancestor=cleared"
+            exit 0
+          fi
+          if [ -z "${PE_READ_TOKEN:-}" ]; then
+            echo "pe_read" >&2
+            exit 1
+          fi
+          auth=$(printf 'x-access-token:%s' "$PE_READ_TOKEN" | base64 -w0)
+          unset PE_READ_TOKEN
+          git -C phantom-engine -c "http.extraheader=AUTHORIZATION: basic ${auth}" fetch --no-tags --filter=blob:none --depth=2147483647 origin "+refs/heads/main:refs/remotes/origin/main"
+          unset auth
+          git -C phantom-engine merge-base --is-ancestor "$head" origin/main
 
       - name: Setup Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -393,7 +425,7 @@ jobs:
       contents: read
       id-token: write
     with:
-      pe_git_sha: ${{ inputs.pe_git_sha }}
+      pe_git_sha: ${{ needs.build.outputs.head_sha != '' && needs.build.outputs.head_sha || inputs.pe_git_sha }}
       run_go: ${{ inputs.run_go }}
       host_name: ${{ inputs.host_name }}
       proof_slice: ${{ inputs.proof_slice }}

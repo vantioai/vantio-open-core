@@ -189,6 +189,11 @@ jobs:
           python3 tests/planning/test_r15_lifecycle.py -v
           python3 scripts/ci/test_optics_observe_ci.py -v
 
+      - name: Read allowlisted Phantom Engine commits
+        env:
+          PE_READ_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+        run: bash scripts/gcp/pe_tip_read.sh
+
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true

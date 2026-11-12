@@ -24,7 +24,7 @@ BUILD = ROOT / "scripts" / "gcp" / "build_pe_loader.sh"
 PIN = ep.PE_GIT_SHA
 MAIN_TIP = "b3567a2aa3d705e8214e1cc671d30c31b9ac1c98"
 DRAFT_TIP = "2d7b92949348478705545a9af660e2dbec3b94af"
-TIPS = (PIN, MAIN_TIP, DRAFT_TIP)
+TIPS = (PIN, MAIN_TIP)
 GO = "zach-run-go-placeholder"
 HOST = "proof81"
 GATE = json.dumps({"expected_oop_usd": "0", "abort": False})
@@ -75,7 +75,7 @@ def _cargo_workdir_is_checkout(workdir: str, volume: str, checkout: Path) -> boo
 class PinAndOrderTests(unittest.TestCase):
     def test_allowlisted_tips_pass_and_other_hex_fails(self) -> None:
         tips = ep.read_allowlist()
-        self.assertEqual(tips, frozenset(TIPS))
+        self.assertEqual(tips, {PIN: False, MAIN_TIP: False})
         self.assertEqual(ep.ALLOWLIST_FILE.name, "pe-git-sha-allowlist.txt")
         for tip in TIPS:
             self.assertEqual(len(tip), 40)
@@ -131,9 +131,34 @@ class PinAndOrderTests(unittest.TestCase):
             ep.parse_allowlist(duplicate)
         self.assertEqual(caught.exception.code, "pe_git_sha_allowlist")
 
+    def test_comment_blank_padding_and_injection_are_refused(self) -> None:
+        commented = "# " + PIN + "\n\n" + MAIN_TIP + "\n"
+        entries = ep.parse_allowlist(commented)
+        self.assertEqual(entries, {MAIN_TIP: False})
+        self.assertNotIn(PIN, entries)
+        self.assertFalse(ep.sha_ok(PIN, allowlist=entries))
+        padded_lines = (f" {PIN}", f"{PIN} ", f"\t{PIN}", f"{PIN}\t", f"{PIN}  cleared", f" {PIN} cleared")
+        for bad in padded_lines:
+            with self.assertRaises(SystemExit) as caught:
+                ep.parse_allowlist(bad + "\n" + MAIN_TIP + "\n")
+            self.assertEqual(caught.exception.code, "pe_git_sha_allowlist")
+            self.assertFalse(ep.sha_ok(bad))
+        payloads = ("$(touch /tmp/pe-inject)", PIN + ";touch /tmp/pe-inject", "`id`", PIN + "\n" + MAIN_TIP)
+        for payload in payloads:
+            self.assertFalse(ep.sha_ok(payload))
+            hidden = _cli("precheck", _base_env(PE_GIT_SHA=payload))
+            self.assertEqual(hidden.returncode, 1)
+            self.assertNotIn(payload, hidden.stdout + hidden.stderr)
+            self.assertIn("pe_git_sha", hidden.stderr)
+        self.assertTrue(ep.tip_may_build(MAIN_TIP, "yes", {MAIN_TIP: False}))
+        self.assertFalse(ep.tip_may_build(MAIN_TIP, "no", {MAIN_TIP: False}))
+        self.assertTrue(ep.tip_may_build(PIN, "no", {PIN: True}))
+        self.assertFalse(ep.tip_may_build(DRAFT_TIP, "yes", {PIN: False, MAIN_TIP: False}))
+
     def test_plan_records_the_dispatched_tip(self) -> None:
-        plan = ep.public_plan("full", DRAFT_TIP)
-        self.assertEqual(plan["pe_git_sha"], DRAFT_TIP)
+        with self.assertRaises(SystemExit) as caught:
+            ep.public_plan("full", DRAFT_TIP)
+        self.assertEqual(caught.exception.code, "pe_git_sha")
         with self.assertRaises(SystemExit) as caught:
             ep.public_plan("full", _flip(DRAFT_TIP))
         self.assertEqual(caught.exception.code, "pe_git_sha")
@@ -242,6 +267,7 @@ class RunTests(unittest.TestCase):
         (directory / "loader.sha256").write_text(hashlib.sha256(binary.read_bytes()).hexdigest() + "\n", encoding="utf-8")
         (directory / "script.sha256").write_text(hashlib.sha256(script.read_bytes()).hexdigest() + "\n", encoding="utf-8")
         (directory / "ldd.txt").write_text("\tlibc.so.6 => /lib/libc.so.6\n", encoding="utf-8")
+        (directory / "build-sha").write_text(PIN + "\n", encoding="utf-8")
 
     def test_refuses_without_execute_and_does_not_create(self) -> None:
         class Boom:
@@ -327,6 +353,8 @@ class RunTests(unittest.TestCase):
         self.assertLess(reboot_at, post)
         self.assertLess(post, expired)
         self.assertIn("proof.env", fake.files)
+        self.assertIn(ep.BUILD_SHA_PATH, joined)
+        self.assertIn(PIN, joined)
         self.assertEqual(body["live_enforcement"], "NOT_PROVEN")
         self.assertEqual(body["pe_git_sha"], PIN)
         self.assertEqual(body["result"], "OBSERVED")
@@ -370,12 +398,81 @@ class RunTests(unittest.TestCase):
                 DEB_DIR=str(debs),
                 EVIDENCE_DIR=str(root / "evidence"),
                 RUNNER_TEMP=str(root),
-                PE_GIT_SHA=DRAFT_TIP,
             )
             self.assertEqual(ep.run_proof(env, fake), 2)  # type: ignore[arg-type]
             body = json.loads((root / "evidence" / "enforcement-proof.json").read_text(encoding="utf-8"))
-        self.assertEqual(body["pe_git_sha"], DRAFT_TIP)
+        self.assertEqual(body["pe_git_sha"], PIN)
         self.assertFalse(any("reboot --force" in command for command in fake.commands))
+
+    def test_proof_json_records_the_build_head_not_a_different_input(self) -> None:
+        class Boom:
+            def create(self, _env: dict[str, str]) -> str:
+                raise AssertionError("created")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._loader(root / "loader")
+            (root / "loader" / "build-sha").write_text(MAIN_TIP + "\n", encoding="utf-8")
+            env = _base_env(
+                GCP_LAB_EXECUTE="1",
+                LOADER_DIR=str(root / "loader"),
+                EVIDENCE_DIR=str(root / "evidence"),
+                RUNNER_TEMP=str(root),
+            )
+            self.assertEqual(ep.run_proof(env, Boom()), 2)  # type: ignore[arg-type]
+            body = json.loads((root / "evidence" / "enforcement-proof.json").read_text(encoding="utf-8"))
+        self.assertEqual(body["pe_git_sha"], MAIN_TIP)
+        self.assertEqual(body["stopped"], "pe_build_sha")
+        self.assertNotEqual(body["pe_git_sha"], PIN)
+
+    def test_reboot_post_fails_when_the_instance_sha_differs(self) -> None:
+        class Fake:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.copied = False
+
+            def instances(self, _project: str) -> list[dict[str, object]]:
+                return [
+                    {
+                        "name": "vantio-gcp-lab-12",
+                        "status": "RUNNING",
+                        "labels": {
+                            "vantio-lab": "gcp",
+                            "vantio-owner": "gha",
+                            "vantio-expires-epoch": "1999999999",
+                        },
+                    }
+                ]
+
+            def wait_ssh(self, _project: str, _name: str) -> str:
+                return "boot"
+
+            def scp(self, _project: str, _name: str, _paths: list[Path]) -> None:
+                self.copied = True
+
+            def ssh(self, _project: str, _name: str, command: str) -> subprocess.CompletedProcess[str]:
+                self.commands.append(command)
+                if command.startswith("sudo cat ") and "build-sha" in command:
+                    return subprocess.CompletedProcess([], 0, MAIN_TIP + "\n", "")
+                return subprocess.CompletedProcess([], 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake = Fake()
+            env = _base_env(
+                GCP_LAB_EXECUTE="1",
+                GCP_LAB_GATE_JSON=GATE,
+                PROOF_SLICE="reboot-post",
+                INSTANCE_NAME="vantio-gcp-lab-12",
+                EVIDENCE_DIR=str(root / "evidence"),
+                RUNNER_TEMP=str(root),
+            )
+            self.assertEqual(ep.run_proof(env, fake), 2)  # type: ignore[arg-type]
+            body = json.loads((root / "evidence" / "enforcement-proof.json").read_text(encoding="utf-8"))
+        self.assertEqual(body["pe_git_sha"], MAIN_TIP)
+        self.assertEqual(body["stopped"], "pe_build_sha")
+        self.assertFalse(fake.copied)
+        self.assertFalse(any(command.endswith(" compare") for command in fake.commands))
 
 
 class CreateAndBuildTests(unittest.TestCase):
@@ -508,6 +605,10 @@ class CreateAndBuildTests(unittest.TestCase):
             "case \"$1\" in\n"
             "  rev-parse) printf '%s\\n' \"$PE_HEAD\" ;;\n"
             "  status) ;;\n"
+            "  merge-base)\n"
+            "    if [ \"${PE_ANCESTOR:-1}\" = \"0\" ]; then exit 1; fi\n"
+            "    exit 0\n"
+            "    ;;\n"
             "  *) printf 'git_unexpected\\n' >&2; exit 1 ;;\n"
             "esac\n",
             encoding="utf-8",
@@ -602,6 +703,7 @@ class CreateAndBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self._checkout(root / "phantom-engine")
+            side = root / "pwned"
             env = self._fake_tools(root, DRAFT_TIP)
             done = subprocess.run(
                 ["bash", str(BUILD), "phantom-engine", "out", DRAFT_TIP],
@@ -611,9 +713,81 @@ class CreateAndBuildTests(unittest.TestCase):
                 env=env,
                 check=False,
             )
-            self.assertEqual(done.returncode, 0, done.stderr)
-            self.assertIn("loader_built=1", done.stdout)
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_git_sha", done.stderr)
+            self.assertNotIn(DRAFT_TIP, done.stdout + done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            self.assertFalse(side.exists())
+
+    def test_non_ancestor_is_rejected_unless_the_entry_is_cleared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._checkout(root / "phantom-engine")
+            env = self._fake_tools(root, PIN)
+            env["PE_ANCESTOR"] = "0"
+            refused = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(refused.returncode, 1)
+            self.assertIn("pe_ancestor", refused.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            script = root / "build_pe_loader.sh"
+            script.write_text(BUILD.read_text(encoding="utf-8"), encoding="utf-8")
+            (root / "pe-git-sha-allowlist.txt").write_text(
+                "# comment " + PIN + "\n\n" + PIN + " cleared\n",
+                encoding="utf-8",
+            )
+            cleared = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(cleared.returncode, 0, cleared.stderr)
             self.assertTrue((root / "docker.log").is_file())
+            self.assertEqual((root / "out" / "build-sha").read_text(encoding="utf-8"), PIN + "\n")
+
+    def test_allowlist_and_input_injection_does_not_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            side = root / "pwned"
+            payload = f"$(touch {side})"
+            script = root / "build_pe_loader.sh"
+            script.write_text(BUILD.read_text(encoding="utf-8"), encoding="utf-8")
+            (root / "pe-git-sha-allowlist.txt").write_text(PIN + "\n" + payload + "\n", encoding="utf-8")
+            env = self._fake_tools(root, PIN)
+            injected = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(injected.returncode, 1)
+            self.assertIn("pe_git_sha", injected.stderr)
+            self.assertFalse(side.exists())
+            self.assertFalse((root / "docker.log").exists())
+            (root / "pe-git-sha-allowlist.txt").write_text("# \n\n" + PIN + "\n", encoding="utf-8")
+            padded = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", " " + PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(padded.returncode, 1)
+            self.assertIn("pe_git_sha", padded.stderr)
+            self.assertFalse(side.exists())
+            self.assertFalse((root / "docker.log").exists())
 
     def test_missing_manifest_does_not_start_docker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -795,12 +969,31 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(steps[checkout_at]["with"]["repository"], "vantioai/vantio-phantom-engine")
         self.assertIs(steps[checkout_at]["with"]["persist-credentials"], False)
         self.assertEqual(steps[checkout_at]["with"]["token"], "${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}")
+        self.assertEqual(steps[record_at]["id"], "record")
         self.assertIn("rev-parse HEAD", steps[record_at]["run"])
         self.assertIn("pe_git_sha=", steps[record_at]["run"])
+        self.assertIn("head_sha=", steps[record_at]["run"])
+        self.assertEqual(
+            doc["jobs"]["build"]["outputs"]["head_sha"],
+            "${{ steps.record.outputs.head_sha }}",
+        )
+        ancestor_at = names.index("Require an ancestor of Phantom Engine main")
+        build_at = names.index("Build the release loader")
+        self.assertLess(record_at, ancestor_at)
+        self.assertLess(ancestor_at, build_at)
+        self.assertIn("merge-base --is-ancestor", steps[ancestor_at]["run"])
+        self.assertIn("enforcement_proof.py cleared", steps[ancestor_at]["run"])
+        self.assertNotIn("gcloud", steps[ancestor_at]["run"])
         build = steps[names.index("Build the release loader")]
         self.assertIn('"$PE_GIT_SHA"', build["run"])
         self.assertEqual(build["env"]["PE_GIT_SHA"], "${{ inputs.pe_git_sha }}")
-        self.assertEqual(doc["jobs"]["prove"]["with"]["pe_git_sha"], "${{ inputs.pe_git_sha }}")
+        self.assertEqual(
+            doc["jobs"]["prove"]["with"]["pe_git_sha"],
+            "${{ needs.build.outputs.head_sha != '' && needs.build.outputs.head_sha || inputs.pe_git_sha }}",
+        )
+        gate = (ROOT / ".github/workflows/gcp-lab-cost-gate.yml").read_text(encoding="utf-8")
+        self.assertIn("PE_GIT_SHA: ${{ inputs.pe_git_sha }}", gate)
+        self.assertIn("google-github-actions/auth@", gate)
         mutated = text.replace("expected_oop_usd == '0'", "expected_oop_usd == '1'")
         mutated_doc = yaml.safe_load(mutated)
         self.assertNotIn("expected_oop_usd == '0'", mutated_doc["jobs"]["prove"]["if"])
@@ -813,8 +1006,120 @@ class WorkflowTests(unittest.TestCase):
         )
         self.assertIn("pe-git-sha-allowlist.txt", sheet)
         self.assertIn("fails before a VM", sheet)
+        self.assertIn("ancestor", sheet)
+        self.assertIn("cleared", sheet)
+        self.assertNotIn(DRAFT_TIP, sheet)
         for tip in TIPS:
             self.assertIn(tip, sheet)
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("bash scripts/gcp/pe_tip_read.sh", ci)
+        self.assertIn("secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN", ci)
+        reader = (ROOT / "scripts/gcp/pe_tip_read.sh").read_text(encoding="utf-8")
+        self.assertNotIn("gcloud", reader)
+        self.assertNotIn("compute instances", reader)
+
+
+class PhantomReadTests(unittest.TestCase):
+    def _fake_git(self, root: Path) -> dict[str, str]:
+        bindir = root / "bin"
+        bindir.mkdir()
+        fetch_file = root / "fetch-sha"
+        git = bindir / "git"
+        git.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >> \"$GIT_LOG\"\n"
+            "while [ $# -gt 0 ]; do\n"
+            "  case \"$1\" in\n"
+            "    -C|-c) shift 2; continue ;;\n"
+            "  esac\n"
+            "  break\n"
+            "done\n"
+            "cmd=$1\n"
+            "shift\n"
+            "case \"$cmd\" in\n"
+            "  ls-remote)\n"
+            "    if [ \"${PE_LS_FAIL:-0}\" = \"1\" ]; then\n"
+            "      echo \"fatal: repository not found\" >&2\n"
+            "      exit 1\n"
+            "    fi\n"
+            "    printf '0123456789abcdef0123456789abcdef01234567\\trefs/heads/main\\n'\n"
+            "    ;;\n"
+            "  init) ;;\n"
+            "  fetch)\n"
+            "    sha=\n"
+            "    for arg in \"$@\"; do sha=$arg; done\n"
+            "    printf '%s\\n' \"$sha\" > \"$PE_FETCH_FILE\"\n"
+            "    ;;\n"
+            "  rev-parse) cat \"$PE_FETCH_FILE\" ;;\n"
+            "  *) echo git_unexpected >&2; exit 1 ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        git.chmod(0o755)
+        return {
+            "PATH": f"{bindir}:{os.environ.get('PATH', '')}",
+            "GIT_LOG": str(root / "git.log"),
+            "PE_FETCH_FILE": str(fetch_file),
+            "HOME": str(root),
+            "PE_READ_TOKEN": "not-a-real-token",
+        }
+
+    def test_shallow_fetch_reads_each_allowlisted_tip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._fake_git(root)
+            done = subprocess.run(
+                ["bash", str(ROOT / "scripts/gcp/pe_tip_read.sh")],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("pe_read=ls-remote", done.stdout)
+            self.assertIn("refs/heads/main", done.stdout)
+            for tip in (PIN, MAIN_TIP):
+                self.assertIn(f"pe_read=ok sha={tip}", done.stdout)
+            log = (root / "git.log").read_text(encoding="utf-8")
+            self.assertIn("ls-remote", log)
+            self.assertEqual(log.count("fetch --depth=1"), 2)
+            self.assertNotIn("gcloud", log)
+            self.assertNotIn("not-a-real-token", done.stdout + done.stderr + log)
+
+    def test_repository_not_found_stops_before_a_second_fetch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._fake_git(root)
+            env["PE_LS_FAIL"] = "1"
+            done = subprocess.run(
+                ["bash", str(ROOT / "scripts/gcp/pe_tip_read.sh")],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_read=404", done.stdout)
+            log = (root / "git.log").read_text(encoding="utf-8")
+            self.assertIn("ls-remote", log)
+            self.assertNotIn("fetch", log)
+            self.assertNotIn("not-a-real-token", done.stdout + done.stderr)
+
+    def test_missing_token_does_not_call_git(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._fake_git(root)
+            env.pop("PE_READ_TOKEN")
+            done = subprocess.run(
+                ["bash", str(ROOT / "scripts/gcp/pe_tip_read.sh")],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_read=token_missing", done.stdout)
+            self.assertFalse((root / "git.log").exists())
 
 
 if __name__ == "__main__":

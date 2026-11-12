@@ -20,19 +20,36 @@ if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]] || [[ ! -f "$allowlist" ]]; then
   exit 1
 fi
 pin_ok=0
+pin_cleared=0
 seen=0
+seen_shas=" "
 while IFS= read -r line || [[ -n "$line" ]]; do
   line=${line%$'\r'}
   case "$line" in
     ""|\#*) continue ;;
   esac
-  if [[ ! "$line" =~ ^[0-9a-f]{40}$ ]]; then
+  entry=$line
+  cleared=0
+  if [[ "$line" == *" cleared" ]]; then
+    entry=${line%" cleared"}
+    cleared=1
+  fi
+  if [[ ! "$entry" =~ ^[0-9a-f]{40}$ ]]; then
     echo "pe_git_sha" >&2
     exit 1
   fi
+  if [[ "$line" != "$entry" && "$line" != "$entry cleared" ]]; then
+    echo "pe_git_sha" >&2
+    exit 1
+  fi
+  case "$seen_shas" in
+    *" $entry "*) echo "pe_git_sha" >&2; exit 1 ;;
+  esac
+  seen_shas="$seen_shas$entry "
   seen=1
-  if [[ "$line" == "$pin" ]]; then
+  if [[ "$entry" == "$pin" ]]; then
     pin_ok=1
+    pin_cleared=$cleared
   fi
 done < "$allowlist"
 if [[ "$seen" -ne 1 || "$pin_ok" -ne 1 ]]; then
@@ -52,6 +69,10 @@ if [[ "$head" != "$pin" ]]; then
   echo "pe_head" >&2
   exit 1
 fi
+if [[ "$pin_cleared" -ne 1 ]] && ! git -C "$src" merge-base --is-ancestor "$head" origin/main; then
+  echo "pe_ancestor" >&2
+  exit 1
+fi
 if [[ -n "$(git -C "$src" status --porcelain)" ]]; then
   echo "pe_dirty" >&2
   exit 1
@@ -67,6 +88,7 @@ case "$out_dir" in
   *) echo "pe_out" >&2; exit 1 ;;
 esac
 cp "$src/scripts/enforcement_proof_lab.sh" "$out_dir/enforcement_proof_lab.sh"
+printf '%s\n' "$head" > "$out_dir/build-sha"
 bash -n "$out_dir/enforcement_proof_lab.sh"
 sha256sum "$out_dir/enforcement_proof_lab.sh" | awk '{print $1}' > "$out_dir/script.sha256"
 

@@ -113,6 +113,8 @@ LOADER_LIB_OK = re.compile(
     r"linux-vdso|ld-linux|libc\.so|libm\.so|libgcc_s\.so|libpthread\.so|libdl\.so|librt\.so|not a dynamic executable"
 )
 LOADER_LIB_BAD = re.compile(r"libssl|libcrypto")
+BUILD_SHA_NAME = "build-sha"
+BUILD_SHA_PATH = f"{LAB_DIR}/{BUILD_SHA_NAME}"
 LAB_FILES = (
     "host.txt",
     "compare.result",
@@ -126,7 +128,7 @@ LAB_FILES = (
     "uninstall.txt",
     "uninstall-negative.txt",
 )
-USAGE = "usage: enforcement_proof.py precheck|sha|plan|run|teardown"
+USAGE = "usage: enforcement_proof.py precheck|sha|cleared|ancestor|plan|run|teardown"
 REBOOT_COMMAND = (
     "sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true; "
     "sync; "
@@ -200,22 +202,31 @@ def proof_minutes(value: object) -> int:
     return minutes
 
 
-def parse_allowlist(text: str) -> frozenset[str]:
-    """Accepted tips. Blank lines and # comments are ignored. Anything else must be 40 lowercase hex."""
-    found: list[str] = []
+def parse_allowlist(text: str) -> dict[str, bool]:
+    """Accepted tips mapped to the cleared flag.
+
+    Blank lines and # comments are ignored. A tip line is 40 lowercase hex.
+    ``<sha> cleared`` is an explicit exception to the ancestor-of-main check.
+    Any other line, including padding or a shell payload, refuses the file.
+    """
+    found: dict[str, bool] = {}
     for raw in text.splitlines():
         line = raw[:-1] if raw.endswith("\r") else raw
         if not line or line.startswith("#"):
             continue
-        if SHA_RE.fullmatch(line) is None:
+        cleared = line.endswith(" cleared")
+        sha = line[: -len(" cleared")] if cleared else line
+        if SHA_RE.fullmatch(sha) is None or line not in {sha, f"{sha} cleared"}:
             raise SystemExit("pe_git_sha_allowlist")
-        found.append(line)
-    if not found or len(found) != len(set(found)):
+        if sha in found:
+            raise SystemExit("pe_git_sha_allowlist")
+        found[sha] = cleared
+    if not found:
         raise SystemExit("pe_git_sha_allowlist")
-    return frozenset(found)
+    return found
 
 
-def read_allowlist(path: Path | None = None) -> frozenset[str]:
+def read_allowlist(path: Path | None = None) -> dict[str, bool]:
     file = ALLOWLIST_FILE if path is None else path
     try:
         text = file.read_text(encoding="utf-8")
@@ -224,7 +235,7 @@ def read_allowlist(path: Path | None = None) -> frozenset[str]:
     return parse_allowlist(text)
 
 
-def sha_ok(value: object, *, path: Path | None = None, allowlist: frozenset[str] | None = None) -> bool:
+def sha_ok(value: object, *, path: Path | None = None, allowlist: Mapping[str, bool] | None = None) -> bool:
     """True when value is 40 lowercase hex and listed. A bad allowlist file is a refusal."""
     if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
         return False
@@ -233,6 +244,21 @@ def sha_ok(value: object, *, path: Path | None = None, allowlist: frozenset[str]
     except SystemExit:
         return False
     return value in allowed
+
+
+def tip_may_build(sha: object, ancestor_flag: str, allowlist: Mapping[str, bool] | None = None) -> bool:
+    """A listed tip may be built when it is an ancestor of PE main, or its entry is cleared."""
+    if not isinstance(sha, str) or SHA_RE.fullmatch(sha) is None:
+        return False
+    try:
+        entries = read_allowlist() if allowlist is None else allowlist
+    except SystemExit:
+        return False
+    if sha not in entries:
+        return False
+    if entries[sha]:
+        return True
+    return ancestor_flag == "yes"
 
 
 def wif_auth_violations(files: Mapping[str, str], allowlist: Sequence[str] = LIVE_WIF_FILES) -> list[str]:
@@ -511,6 +537,66 @@ def check_sha(env: Mapping[str, str]) -> int:
     return 0
 
 
+def cleared_tip(env: Mapping[str, str]) -> int:
+    """Exit 0 only when the tip's allowlist entry is explicitly marked cleared."""
+    value = env.get("PE_GIT_SHA", "")
+    try:
+        entries = read_allowlist()
+    except SystemExit:
+        return 1
+    if isinstance(value, str) and entries.get(value) is True:
+        return 0
+    return 1
+
+
+def ancestor_tip(env: Mapping[str, str]) -> int:
+    """Exit 0 when the tip may be built. PE_ANCESTOR is yes, no, or cleared."""
+    if tip_may_build(env.get("PE_GIT_SHA", ""), env.get("PE_ANCESTOR", "")):
+        return 0
+    print("pe_ancestor", file=sys.stderr)
+    return 1
+
+
+def loader_build_sha(directory: Path) -> str:
+    """The build job's git rev-parse HEAD, written next to the loader."""
+    path = directory / BUILD_SHA_NAME
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SystemExit("pe_build_sha") from exc
+    line = text[:-1] if text.endswith("\n") else text
+    if "\n" in line or not sha_ok(line):
+        raise SystemExit("pe_build_sha")
+    return line
+
+
+def write_build_sha_command(sha: str) -> str:
+    if not sha_ok(sha):
+        raise SystemExit("pe_build_sha")
+    return (
+        "sudo mkdir -p "
+        + shlex.quote(LAB_DIR)
+        + " && printf '%s\\n' "
+        + shlex.quote(sha)
+        + " | sudo tee "
+        + shlex.quote(BUILD_SHA_PATH)
+        + " >/dev/null && sudo chmod 644 "
+        + shlex.quote(BUILD_SHA_PATH)
+    )
+
+
+def read_remote_build_sha(transport: GcloudTransport, project: str, name: str) -> str:
+    completed = transport.ssh(project, name, f"sudo cat {shlex.quote(BUILD_SHA_PATH)}")
+    if completed.returncode != 0:
+        raise SystemExit("pe_build_sha")
+    line = completed.stdout or ""
+    if line.endswith("\n"):
+        line = line[:-1]
+    if "\n" in line or not sha_ok(line):
+        raise SystemExit("pe_build_sha")
+    return line
+
+
 def precheck(env: Mapping[str, str]) -> int:
     """Validate dispatch inputs. Prints lengths and the accepted git tip only."""
     sha = env.get("PE_GIT_SHA", "")
@@ -721,22 +807,86 @@ def _evidence_dir(env: Mapping[str, str]) -> Path:
     return path
 
 
+def _emit_proof(
+    env: Mapping[str, str],
+    evidence: Path,
+    *,
+    sha: str,
+    stopped: str,
+    name: str,
+    loader_sha: str,
+    observations: Sequence[str],
+    slice_name: str,
+    phases: Sequence[str],
+) -> dict[str, Any]:
+    """Write the proof JSON. pe_git_sha is the build HEAD when that value is allowlisted."""
+    project = od.require_lab_project(env.get("GCP_LAB_PROJECT", ""))
+    body: dict[str, Any] = {
+        "image_family": od.IMAGE_FAMILY,
+        "instance_name": name,
+        "lab_dir": LAB_DIR,
+        "live_enforcement": "NOT_PROVEN",
+        "machine_type": lab.MACHINE_TYPE,
+        "observations": list(observations),
+        "phases": list(phases),
+        "project_id": project,
+        "public_ip": False,
+        "reboot_restored": "NOT_RUN",
+        "result": "OBSERVED" if not stopped else "STOPPED",
+        "slice": slice_name,
+        "stopped": stopped,
+        "zone": lab.ZONE,
+    }
+    if loader_sha:
+        body["loader_sha256"] = loader_sha
+    if sha_ok(sha):
+        body["pe_git_sha"] = sha
+    kept = allow_evidence(body)
+    if not kept.get("loader_sha256"):
+        kept.pop("loader_sha256", None)
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "enforcement-proof.json").write_text(json.dumps(kept, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(kept))
+    return kept
+
+
 def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) -> int:
     if env.get("GCP_LAB_EXECUTE") != "1":
         print("refusing to call gcloud", file=sys.stderr)
         return 2
     if precheck(env) != 0:
         return 1
-    sha = env.get("PE_GIT_SHA", "")
-    if not sha_ok(sha):
+    dispatch = env.get("PE_GIT_SHA", "")
+    if not sha_ok(dispatch):
         print("pe_git_sha", file=sys.stderr)
         return 1
-    od._gate_ok(env)
-    project = od.require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     slice_name = env["PROOF_SLICE"]
     phases = phases_for(slice_name)
-    transport = transport or GcloudTransport()
     evidence = _evidence_dir(env)
+    sha = ""
+    if slice_name != "reboot-post":
+        try:
+            sha = loader_build_sha(Path(env.get("LOADER_DIR", "")))
+        except SystemExit:
+            print("pe_build_sha", file=sys.stderr)
+            return 2
+        if sha != dispatch:
+            _emit_proof(
+                env,
+                evidence,
+                sha=sha,
+                stopped="pe_build_sha",
+                name="",
+                loader_sha="",
+                observations=[],
+                slice_name=slice_name,
+                phases=phases,
+            )
+            print("pe_build_sha", file=sys.stderr)
+            return 2
+    od._gate_ok(env)
+    project = od.require_lab_project(env.get("GCP_LAB_PROJECT", ""))
+    transport = transport or GcloudTransport()
     stage_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "enforcement-proof-stage"
     observations: list[str] = []
     stopped = ""
@@ -748,10 +898,14 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
             if not _owned(transport.instances(project), name):
                 raise SystemExit("skip_not_owned")
             transport.wait_ssh(project, name)
-            transport.scp(project, name, _write_guest_files(env, stage_dir, with_loader=False))
-            prepared = transport.ssh(project, name, REFRESH_COMMAND)
-            if prepared.returncode != 0:
-                raise SystemExit("ssh")
+            sha = read_remote_build_sha(transport, project, name)
+            if sha != dispatch:
+                stopped = "pe_build_sha"
+            else:
+                transport.scp(project, name, _write_guest_files(env, stage_dir, with_loader=False))
+                prepared = transport.ssh(project, name, REFRESH_COMMAND)
+                if prepared.returncode != 0:
+                    raise SystemExit("ssh")
         else:
             loader_sha = check_loader_dir(Path(env.get("LOADER_DIR", "")))
             if lab.slot_occupied(transport.instances(project)):
@@ -762,62 +916,53 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
             prepared = transport.ssh(project, name, PREPARE_COMMAND)
             if prepared.returncode != 0:
                 raise SystemExit("guest_prepare")
-        compares = 0
-        for index, phase in enumerate(phases, start=1):
-            if phase == "reboot":
-                before = transport.boot_id(project, name)
-                completed = transport.ssh(project, name, REBOOT_COMMAND)
-                text = redact((completed.stdout or "") + (completed.stderr or ""), env)
-                (evidence / f"{index:02d}-reboot.log").write_text(text, encoding="utf-8")
-                after = transport.wait_boot(project, name, before)
-                if completed.returncode not in (0, 255) or not od.reboot_ready(before, after):
-                    stopped = "reboot"
-                    break
-                continue
-            if phase == "compare":
-                compares += 1
-                if compares == 2:
-                    archived = transport.ssh(project, name, ARCHIVE_COMMAND)
-                    if archived.returncode != 0:
-                        stopped = "archive"
+            recorded = transport.ssh(project, name, write_build_sha_command(sha))
+            if recorded.returncode != 0:
+                raise SystemExit("pe_build_sha")
+        if not stopped:
+            compares = 0
+            for index, phase in enumerate(phases, start=1):
+                if phase == "reboot":
+                    before = transport.boot_id(project, name)
+                    completed = transport.ssh(project, name, REBOOT_COMMAND)
+                    text = redact((completed.stdout or "") + (completed.stderr or ""), env)
+                    (evidence / f"{index:02d}-reboot.log").write_text(text, encoding="utf-8")
+                    after = transport.wait_boot(project, name, before)
+                    if completed.returncode not in (0, 255) or not od.reboot_ready(before, after):
+                        stopped = "reboot"
                         break
-                    _pull_tree(transport, project, name, LAB_DIR, evidence / "pre-reboot", env)
-            command = ssh_phase_command(phase)
-            completed = transport.ssh(project, name, command)
-            text = redact((completed.stdout or "") + (completed.stderr or ""), env)
-            (evidence / f"{index:02d}-{phase}.log").write_text(text, encoding="utf-8")
-            lines = kept_lines(text)
-            observations.extend(line for line in lines if line not in observations)
-            _pull_tree(transport, project, name, LAB_DIR, evidence / "lab", env)
-            if not phase_accepted(phase, lines, completed.returncode):
-                stopped = phase
-                break
+                    continue
+                if phase == "compare":
+                    compares += 1
+                    if compares == 2:
+                        archived = transport.ssh(project, name, ARCHIVE_COMMAND)
+                        if archived.returncode != 0:
+                            stopped = "archive"
+                            break
+                        _pull_tree(transport, project, name, LAB_DIR, evidence / "pre-reboot", env)
+                command = ssh_phase_command(phase)
+                completed = transport.ssh(project, name, command)
+                text = redact((completed.stdout or "") + (completed.stderr or ""), env)
+                (evidence / f"{index:02d}-{phase}.log").write_text(text, encoding="utf-8")
+                lines = kept_lines(text)
+                observations.extend(line for line in lines if line not in observations)
+                _pull_tree(transport, project, name, LAB_DIR, evidence / "lab", env)
+                if not phase_accepted(phase, lines, completed.returncode):
+                    stopped = phase
+                    break
     except SystemExit as exc:
         stopped = stopped or (exc.code if isinstance(exc.code, str) else "failed")
-    payload = allow_evidence(
-        {
-            "image_family": od.IMAGE_FAMILY,
-            "instance_name": name,
-            "lab_dir": LAB_DIR,
-            "live_enforcement": "NOT_PROVEN",
-            "loader_sha256": loader_sha,
-            "machine_type": lab.MACHINE_TYPE,
-            "observations": observations,
-            "pe_git_sha": sha,
-            "phases": list(phases),
-            "project_id": project,
-            "public_ip": False,
-            "reboot_restored": "NOT_RUN",
-            "result": "OBSERVED" if not stopped else "STOPPED",
-            "slice": slice_name,
-            "stopped": stopped,
-            "zone": lab.ZONE,
-        }
+    _emit_proof(
+        env,
+        evidence,
+        sha=sha,
+        stopped=stopped,
+        name=name,
+        loader_sha=loader_sha,
+        observations=observations,
+        slice_name=slice_name,
+        phases=phases,
     )
-    if not payload.get("loader_sha256"):
-        payload.pop("loader_sha256", None)
-    (evidence / "enforcement-proof.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(payload))
     if name:
         od.github_output("instance_name", name)
     if stopped:
@@ -906,6 +1051,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return precheck(os.environ)
         if command == "sha":
             return check_sha(os.environ)
+        if command == "cleared":
+            return cleared_tip(os.environ)
+        if command == "ancestor":
+            return ancestor_tip(os.environ)
         if command == "plan":
             slice_name = os.environ.get("PROOF_SLICE", "full")
             sha = os.environ.get("PE_GIT_SHA") or PE_GIT_SHA

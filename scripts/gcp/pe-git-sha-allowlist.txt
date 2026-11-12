@@ -1,8 +1,7 @@
 # Phantom Engine git tips the GCP enforcement-proof workflow may check out.
-# Each accepted line is one full 40-character lowercase hex commit. A tip is not a seal.
+# A line is one full 40-character lowercase hex commit. A tip is not a seal.
+# Suffix " cleared" marks an explicit exception to the ancestor-of-main check.
 # Original proof tip.
 864289cb2c9c4135d74233c74c6655087de3f20d
 # Phantom Engine main after pull 85 merged.
 b3567a2aa3d705e8214e1cc671d30c31b9ac1c98
-# Head of Phantom Engine draft pull 90.
-2d7b92949348478705545a9af660e2dbec3b94af
