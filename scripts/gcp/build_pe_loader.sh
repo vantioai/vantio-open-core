@@ -80,8 +80,19 @@ printf '%s\n' "$head" > "$out_dir/build-sha"
 bash -n "$out_dir/enforcement_proof_lab.sh"
 sha256sum "$out_dir/enforcement_proof_lab.sh" | awk '{print $1}' > "$out_dir/script.sha256"
 
+# The checkout is mounted read-only. The nested eBPF build writes
+# $src/target, and the loader build writes CARGO_TARGET_DIR. Both have to
+# be writable directories outside that mount. RUNNER_TEMP is writable on
+# the GitHub runner; the out directory is the local fallback.
+writable_root=${RUNNER_TEMP:-$out_dir}
+cargo_host=$writable_root/vantio-cargo-target
+ebpf_host=$writable_root/vantio-ebpf-target
+mkdir -p "$cargo_host" "$ebpf_host" "$src/target"
+
 docker run --rm \
   -v "$src:$src:ro" \
+  -v "$ebpf_host:$src/target" \
+  -v "$cargo_host:/cargo-target" \
   -v "$out_dir:/out" \
   -w "$src" \
   ubuntu:24.04 \
@@ -94,9 +105,9 @@ curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --defaul
 curl -L --proto "=https" --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 cargo binstall --no-confirm bpf-linker
 export CARGO_HOME=/tmp/cargo
-export CARGO_TARGET_DIR=/tmp/target
+export CARGO_TARGET_DIR=/cargo-target
 cargo build -p vantio-loader --release
-install -m 0755 /tmp/target/release/vantio-loader /out/vantio-loader
+install -m 0755 /cargo-target/release/vantio-loader /out/vantio-loader
 if ldd /out/vantio-loader | grep -E "libssl|libcrypto"; then
   echo "loader_libs" >&2
   exit 1
