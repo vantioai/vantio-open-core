@@ -245,7 +245,33 @@ class Stage4PlanTests(unittest.TestCase):
             "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main",
         )
         self.assertEqual(caller["jobs"]["lab"]["with"]["stage4"], "1")
-        self.assertEqual(caller["concurrency"]["group"], "gcp-stage4-lab")
+        self.assertEqual(caller["concurrency"]["group"], "vantio-gce-slot")
+        self.assertLess(
+            caller_text.index("gcp-stage4-lab.yml@refs/heads/main"),
+            caller_text.index("secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN"),
+        )
+        fetch_steps = caller["jobs"]["fetch-pe"]["steps"]
+        self.assertEqual(fetch_steps[0]["name"], "Require main on vantio-open-core")
+        self.assertLess(
+            caller_text.index("Require main on vantio-open-core"),
+            caller_text.index("repository: vantioai/vantio-phantom-engine"),
+        )
+        for job_id in ("stage4-teardown", "stage4-verify"):
+            step_names = [step.get("name") for step in doc["jobs"][job_id]["steps"]]
+            self.assertEqual(step_names[0], "Require main on vantio-open-core")
+            self.assertLess(step_names.index("Require main on vantio-open-core"), step_names.index("Checkout"))
+            self.assertLess(
+                step_names.index("Require main on vantio-open-core"),
+                step_names.index("Authenticate with workload identity"),
+            )
+        self.assertEqual(
+            doc["jobs"]["stage4-target"]["outputs"]["overall"],
+            "${{ steps.ds.outputs.overall }}",
+        )
+        self.assertEqual(
+            doc["jobs"]["stage4-target"]["outputs"]["ds_hold"],
+            "${{ steps.ds.outputs.ds_hold }}",
+        )
         self.assertNotIn("harness_ref:", caller_text)
         self.assertIn("build_pe_loader.sh", caller_text)
         self.assertIn('STAGE4_AFTER_AUTH: "1"', text)
@@ -329,12 +355,85 @@ class Stage4PlanTests(unittest.TestCase):
                 text=True,
                 env=env,
             )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn(stage4_plan.DS_HOLD, completed.stdout)
+            self.assertIn("OVERALL INCOMPLETE", completed.stdout)
+            self.assertNotIn("OVERALL PASS", completed.stdout)
+            self.assertNotIn("compare=PASS", completed.stdout)
+            self.assertNotRegex(completed.stdout, r"(?m)^OVERALL PASS$")
+            self.assertIn("live_enforcement=NOT_PROVEN", completed.stdout)
+            output = Path(tmp) / "github-output.txt"
+            env["GITHUB_OUTPUT"] = str(output)
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "summary"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            recorded = output.read_text(encoding="utf-8")
+        self.assertIn("overall=INCOMPLETE", recorded)
+        self.assertIn(stage4_plan.DS_HOLD, recorded)
+        self.assertNotIn("overall=PASS", recorded)
+
+    def test_unbooted_debs_do_not_create_a_vm(self) -> None:
+        self.assertFalse(stage4_plan.deb_boot_observed(None))
+        self.assertFalse(stage4_plan.deb_boot_observed("debian13-and-ubuntu2605"))
+        self.assertTrue(stage4_plan.deb_boot_observed(stage4_plan.DEB_BOOT_TOKEN))
+        env = {
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "SOAK_MINUTES": "60",
+            "RUN_GO": "run-go-ok",
+            "HOST_NAME": "labhost",
+            "HARNESS_CANDIDATES": str(ROOT),
+            "ROLE": "debian",
+            "GCP_LAB_EXECUTE": "1",
+            "PATH": os.environ.get("PATH", ""),
+        }
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "target"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("deb_boot", completed.stderr)
+        self.assertNotIn("instances", completed.stdout)
+        self.assertNotIn("gcloud", completed.stdout)
+
+    def test_uname_failure_deletes_the_instance(self) -> None:
+        with (
+            mock.patch.object(stage4_drive, "_open_vm", return_value="s4-7-deb"),
+            mock.patch.object(stage4_drive, "_wait_ssh", return_value="boot"),
+            mock.patch.object(stage4_drive, "_copy_guest_scripts"),
+            mock.patch.object(stage4_drive, "_preflight", side_effect=stage4_plan.PlanError("preflight")),
+            mock.patch.object(stage4_drive, "_delete_instance") as delete,
+        ):
+            with self.assertRaises(stage4_plan.PlanError) as caught:
+                stage4_drive._prepare_guest("debian")
+        self.assertEqual(caught.exception.reason, "preflight")
+        delete.assert_called_once_with("s4-7-deb")
+        env = os.environ.copy()
+        env.pop("GCP_LAB_EXECUTE", None)
+        with mock.patch.dict(os.environ, env, clear=True):
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import stage4_drive; stage4_drive._delete_instance('s4-7-deb')",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=ROOT / "scripts" / "lab",
+                env={**env, "PYTHONPATH": str(ROOT / "scripts" / "lab")},
+            )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn(stage4_plan.DS_HOLD, completed.stdout)
-        self.assertIn("OVERALL INCOMPLETE", completed.stdout)
-        self.assertNotIn("OVERALL PASS", completed.stdout)
-        self.assertNotRegex(completed.stdout, r"(?m)^OVERALL PASS$")
-        self.assertIn("live_enforcement=NOT_PROVEN", completed.stdout)
+        self.assertIn("--delete-disks=all", completed.stdout)
+        self.assertIn("instances", completed.stdout)
 
     def test_short_harness_is_rejected(self) -> None:
         with self.assertRaises(stage4_plan.PlanError) as caught:

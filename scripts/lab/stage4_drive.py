@@ -26,6 +26,7 @@ from stage4_plan import (  # noqa: E402
     ZONE,
     PlanError,
     create_argv,
+    deb_boot_observed,
     delete_argv,
     disk_by_name_argv,
     disk_label_argv,
@@ -215,6 +216,38 @@ def _open_vm(role: str) -> str:
     if described.returncode != 0 or described.stdout.strip() != spec["image"]:
         raise PlanError("image")
     return _create(role)
+
+
+def _delete_instance(name: str) -> None:
+    """Delete one instance and its disks. Used when preflight fails after create."""
+    _run(delete_argv("instances", name, ZONE), check=False)
+
+
+def _prepare_guest(role: str) -> str:
+    """Create, then preflight. A failed uname or kernel check deletes the VM."""
+    name = _open_vm(role)
+    try:
+        _wait_ssh(name)
+        _copy_guest_scripts(name)
+        _preflight(name, role)
+    except PlanError:
+        _delete_instance(name)
+        raise
+    return name
+
+
+def _write_job_output(hold: str, grade: str) -> None:
+    """Put the DS hold and the overall grade on the step output."""
+    path = os.environ.get("GITHUB_OUTPUT", "")
+    if path == "":
+        return
+    if grade == "PASS" or not ds_is_hold(0, hold):
+        raise PlanError("overall")
+    with Path(path).open("a", encoding="utf-8") as handle:
+        handle.write("ds_hold<<STAGE4_DS\n")
+        handle.write(hold if hold.endswith("\n") else hold + "\n")
+        handle.write("STAGE4_DS\n")
+        handle.write(f"overall={grade}\n")
 
 
 def phase_commands(harness: object) -> list[tuple[str, str]]:
@@ -472,7 +505,7 @@ def _target(role: str) -> int:
     )
     if not _execute():
         print("execute=0")
-        _record_ds()
+        hold = _record_ds()
         root = harness_root(_candidates(os.environ.get("HARNESS_CANDIDATES", "")))
         if root is None:
             raise PlanError("harness_entrypoint_missing")
@@ -481,8 +514,11 @@ def _target(role: str) -> int:
         except (ImportError, OSError, RuntimeError) as exc:
             print(type(exc).__name__, file=sys.stderr)
             raise PlanError("harness_import") from exc
-        _emit_overall(dry_harness, [])
+        grade = _emit_overall(dry_harness, [])
+        _write_job_output(hold, grade)
         return 0
+    if role != "refuse" and not deb_boot_observed(os.environ.get("STAGE4_DEB_BOOT")):
+        raise PlanError("deb_boot")
     root = harness_root(_candidates(os.environ.get("HARNESS_CANDIDATES", "")))
     if root is None:
         raise PlanError("harness_entrypoint_missing")
@@ -500,18 +536,17 @@ def _target(role: str) -> int:
     if role != "refuse":
         phase_commands(harness)
         _fetch_debs(root, deb_dir)
-    name = _open_vm(role)
-    _wait_ssh(name)
-    _copy_guest_scripts(name)
-    _preflight(name, role)
+    name = _prepare_guest(role)
     if role == "refuse":
         _install_loader(name, loader_dir)
         refused = _guest(name, "refuse", role)
         if refused.returncode != 0:
+            _delete_instance(name)
             raise PlanError("refusal")
         _assert_logs_clean()
-        _record_ds()
-        _emit_overall(harness, [])
+        hold = _record_ds()
+        grade = _emit_overall(harness, [])
+        _write_job_output(hold, grade)
         return 0
     _stage_harness(name, harness, loader_dir, deb_dir)
     accepted = _run_phases(name, harness)
@@ -519,8 +554,10 @@ def _target(role: str) -> int:
     if soaked.returncode != 0:
         raise PlanError("soak")
     _assert_logs_clean()
-    _record_ds()
-    _emit_overall(harness, accepted)
+    hold = _record_ds()
+    # Accepted phases stay NOT_PROVEN. The rows are the harness grade, not a pass.
+    grade = _emit_overall(harness, accepted)
+    _write_job_output(hold, grade)
     return 0
 
 
@@ -614,11 +651,11 @@ def main(argv: list[str]) -> int:
             except (ImportError, OSError, RuntimeError) as exc:
                 print(type(exc).__name__, file=sys.stderr)
                 raise PlanError("harness_import") from exc
-            rows = list(harness.green_full_rows())  # type: ignore[attr-defined]
-            for phase, lines, returncode in rows:
-                if not harness.phase_accepted(phase, lines, returncode):  # type: ignore[attr-defined]
-                    raise PlanError("overall")
-            _emit_overall(harness, rows)
+            # Empty rows. green_full_rows() is a unit fixture, not a boot.
+            grade = _emit_overall(harness, [])
+            if grade != "INCOMPLETE":
+                raise PlanError("overall")
+            _write_job_output(text, grade)
             return 0
     except PlanError as exc:
         print(exc.reason, file=sys.stderr)

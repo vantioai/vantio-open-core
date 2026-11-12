@@ -9,8 +9,10 @@ name: GCP stage 4 lab
 # Workload identity stays in gcp-lab-cost-gate.yml. That file's provider,
 # service account, and gcp-lab environment are the ones this lab uses.
 # This file does not declare an environment and does not authenticate.
-# A dispatch from a branch still calls that file at main, so the stage 4
-# jobs run only after this change is on main.
+# Merging this diff widens what gcp-lab-cost-gate.yml can do. The provider
+# trusts that file path at main and does not pin a blob SHA. WORKFLOWS is
+# unchanged. fetch-pe refuses unless this caller file is at refs/heads/main,
+# and it does that before the private checkout.
 
 on:
   workflow_dispatch:
@@ -43,10 +45,11 @@ permissions:
   id-token: write
 
 concurrency:
-  # One group for this workflow, so a second dispatch waits.
-  # The called cost-gate file keeps its own group. Sharing that name
-  # here would deadlock the reusable call.
-  group: gcp-stage4-lab
+  # Same group as gcp-lab-enforcement-proof.yml, so a proof run and a
+  # stage 4 run do not create VMs at the same time. The called cost-gate
+  # file keeps group gcp-lab-cost-gate. Sharing that name here would
+  # deadlock the reusable call.
+  group: vantio-gce-slot
   cancel-in-progress: false
 
 env:
@@ -96,6 +99,16 @@ jobs:
     outputs:
       pe_git_sha: ${{ steps.pin.outputs.sha }}
     steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          workflow_ref="vantioai/vantio-open-core/.github/workflows"
+          workflow_ref="${workflow_ref}/gcp-stage4-lab.yml@refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "$workflow_ref"
+
       - name: Checkout this workflow
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -151,9 +164,13 @@ jobs:
           set -euo pipefail
           head=$(git -C pe-src rev-parse HEAD)
           test "$head" = "$PIN"
-          mkdir -p loader-out
-          bash scripts/gcp/build_pe_loader.sh "$PWD/pe-src" "$PWD/loader-out" "$PIN"
-          printf '%s\n' "$PIN" > loader-out/SOURCE_SHA
+          mkdir -p loader-out/debian loader-out/ubuntu
+          bash scripts/gcp/build_pe_loader.sh \
+            "$PWD/pe-src" "$PWD/loader-out/debian" "$PIN" debian13
+          bash scripts/gcp/build_pe_loader.sh \
+            "$PWD/pe-src" "$PWD/loader-out/ubuntu" "$PIN" ubuntu2604
+          printf '%s\n' "$PIN" > loader-out/debian/SOURCE_SHA
+          printf '%s\n' "$PIN" > loader-out/ubuntu/SOURCE_SHA
 
       - name: Upload the runner-built loader
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

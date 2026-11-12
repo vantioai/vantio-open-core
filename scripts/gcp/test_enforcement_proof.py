@@ -447,6 +447,8 @@ class CreateAndBuildTests(unittest.TestCase):
             volumes = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
             self.assertTrue(_cargo_workdir_is_checkout(workdir, f"{workdir}:{workdir}:ro", checkout))
             self.assertIn(f"{workdir}:{workdir}:ro", volumes)
+            self.assertIn("ubuntu:24.04", args)
+            self.assertNotIn("debian:13", args)
             self.assertNotIn("/src", workdir)
             self.assertTrue((Path(workdir) / "Cargo.toml").is_file())
             flipped = workdir[:-1] + ("x" if workdir[-1] != "x" else "y")
@@ -456,6 +458,48 @@ class CreateAndBuildTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine"', workflow)
         self.assertNotIn("build_pe_loader.sh phantom-engine ", workflow)
+
+    def test_stage4_images_replace_the_ubuntu_2404_container(self) -> None:
+        text = BUILD.read_text(encoding="utf-8")
+        self.assertNotIn("The guest is an e2-micro", text)
+        self.assertIn("e2-standard-2", text)
+        self.assertIn("binstall_tag=v1.27.0", text)
+        self.assertIn("bpf_linker_version=0.13.0", text)
+        self.assertNotIn("install-from-binstall-release.sh", text)
+        self.assertNotIn("cargo-binstall/main", text)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            for guest, image, other in (
+                ("debian13", "debian:13", "ubuntu:24.04"),
+                ("ubuntu2604", "ubuntu:26.04", "ubuntu:24.04"),
+            ):
+                done = subprocess.run(
+                    ["bash", str(BUILD), "phantom-engine", "out", PIN, guest],
+                    capture_output=True,
+                    text=True,
+                    cwd=root,
+                    env=env,
+                    check=False,
+                )
+                self.assertEqual(done.returncode, 0, done.stderr)
+                args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+                self.assertIn(image, args)
+                self.assertNotIn(other, args)
+            (root / "docker.log").unlink()
+            refused = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN, "ubuntu2404"],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("build_image", refused.stderr)
+            self.assertFalse((root / "docker.log").exists())
 
     def test_missing_manifest_does_not_start_docker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

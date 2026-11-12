@@ -51,7 +51,10 @@ DEBIAN_FAMILY = "debian-13"
 # trixie-security metapackage linux-image-cloud-amd64 6.12.116-1, as listed
 # by https://openfactory.tech/packages/debian-13/linux-image-cloud-amd64
 # (synced 2026-11-11). uname -r for that package is the string below.
-# The image above was built on 20261102. A mismatch aborts before any phase.
+# The image above was built on 20261102. These are package-page strings.
+# Neither pin was booted. Replace them with the observed uname -r from one
+# boot of each pin before a lab dispatch treats them as guest fact.
+# A mismatch after create deletes that instance.
 DEBIAN_UNAME = "6.12.116+deb13-cloud-amd64"
 
 UBUNTU_IMAGE_PROJECT = "ubuntu-os-cloud"
@@ -60,6 +63,10 @@ UBUNTU_FAMILY = "ubuntu-2604-lts-amd64"
 # packages.ubuntu.com/resolute/linux-image-gcp 7.0.0-1016.18 depends on
 # linux-image-7.0.0-1016-gcp. Fetched 2026-11-12. uname -r is that ABI.
 UBUNTU_UNAME = "7.0.0-1016-gcp"
+# fetch_offline_debs.sh is an Ubuntu 24.04 snapshot. It is not green phase
+# evidence on Debian 13 or Ubuntu 26.04 until both guests have booted it.
+# Nothing in this tree sets STAGE4_DEB_BOOT to this token.
+DEB_BOOT_TOKEN = "debian13-and-ubuntu2604"
 
 SOAK_DEFAULT = 60
 SOAK_MAX = 240
@@ -195,6 +202,11 @@ def refusal_holds(text: str, loader_rc: int, before: list[str], after: list[str]
 
 def enforcement_claim() -> str:
     return LIVE_ENFORCEMENT
+
+
+def deb_boot_observed(value: str | None) -> bool:
+    """True only for the recorded boot of the offline debs on both guests."""
+    return value == DEB_BOOT_TOKEN
 
 
 def ds_hold_text(ref: str, secret: str = "") -> str:

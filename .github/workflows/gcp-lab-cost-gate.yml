@@ -637,6 +637,9 @@ jobs:
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: gcp-lab
     timeout-minutes: 360
+    outputs:
+      ds_hold: ${{ steps.ds.outputs.ds_hold }}
+      overall: ${{ steps.ds.outputs.overall }}
     strategy:
       fail-fast: false
       matrix:
@@ -733,13 +736,14 @@ jobs:
           RUN_GO: ${{ inputs.run_go }}
           HOST_NAME: ${{ inputs.host_name }}
           DS_REF: ${{ inputs.ds_ref }}
-          LOADER_DIR: loader-out
+          LOADER_DIR: ${{ matrix.role == 'ubuntu' && 'loader-out/ubuntu' || 'loader-out/debian' }}
           PE_GIT_SHA: ${{ inputs.pe_git_sha }}
           HARNESS_CANDIDATES: .
           STAGE4_AFTER_AUTH: "1"
         run: vantio run python3 scripts/lab/stage4_drive.py target
 
       - name: DS hold
+        id: ds
         if: always()
         env:
           DS_REF: ${{ inputs.ds_ref }}
@@ -806,6 +810,21 @@ jobs:
     environment: gcp-lab
     timeout-minutes: 20
     steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "event" >&2; exit 1 ;;
+          esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
+          esac
+
       - name: Refuse static GCP keys
         run: |
           set -euo pipefail
@@ -927,6 +946,21 @@ jobs:
     environment: gcp-lab
     timeout-minutes: 15
     steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "event" >&2; exit 1 ;;
+          esac
+          case "$GITHUB_WORKFLOW_REF" in
+            vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main) ;;
+            vantioai/vantio-open-core/.github/workflows/gcp-stage4-lab.yml@refs/heads/main) ;;
+            *) echo "workflow_ref" >&2; exit 1 ;;
+          esac
+
       - name: Refuse static GCP keys
         run: |
           set -euo pipefail
