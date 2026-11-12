@@ -744,9 +744,10 @@ jobs:
         env:
           DS_REF: ${{ inputs.ds_ref }}
           RUN_GO: ${{ inputs.run_go }}
+          HARNESS_CANDIDATES: .
         run: |
           set -euo pipefail
-          python3 scripts/lab/stage4_plan.py ds-hold | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 scripts/lab/stage4_drive.py summary | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload logs
         if: always()

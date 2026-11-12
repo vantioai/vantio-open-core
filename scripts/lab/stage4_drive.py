@@ -399,9 +399,21 @@ def _stage_harness(name: str, harness: object, loader_dir: Path, deb_dir: Path) 
         raise PlanError("guest_prepare")
 
 
-def _run_phases(name: str, harness: object) -> None:
+def _emit_overall(harness: object, rows: list[tuple[str, list[str], int]]) -> str:
+    """Print the harness overall grade. PASS is a failed grade."""
+    grade = harness.overall_grade(rows, ds_wired=False)  # type: ignore[attr-defined]
+    if grade == "PASS" or grade not in {"NOT_PROVEN", "INCOMPLETE"}:
+        raise PlanError("overall")
+    text = f"OVERALL {grade}\nlive_enforcement={enforcement_claim()}\n"
+    sys.stdout.write(text)
+    _append_log("overall.txt", text)
+    return grade
+
+
+def _run_phases(name: str, harness: object) -> list[tuple[str, list[str], int]]:
     compares_seen = 0
     observed: dict[str, str] = {}
+    rows: list[tuple[str, list[str], int]] = []
     for phase, command in phase_commands(harness):
         if phase == "reboot":
             before = _boot_id(name)
@@ -425,9 +437,11 @@ def _run_phases(name: str, harness: object) -> None:
             raise PlanError("reboot")
         if not harness.phase_accepted(phase, lines, completed.returncode):  # type: ignore[attr-defined]
             raise PlanError(f"phase_{phase}")
+        rows.append((phase, lines, completed.returncode))
         _append_log("phases.txt", f"phase={phase} outcome=accepted\n")
     if compares_seen != 2:
         raise PlanError("harness_phase_count")
+    return rows
 
 
 def _require_loader(harness: object, loader_dir: Path) -> None:
@@ -459,6 +473,15 @@ def _target(role: str) -> int:
     if not _execute():
         print("execute=0")
         _record_ds()
+        root = harness_root(_candidates(os.environ.get("HARNESS_CANDIDATES", "")))
+        if root is None:
+            raise PlanError("harness_entrypoint_missing")
+        try:
+            dry_harness = _load_harness(root)
+        except (ImportError, OSError, RuntimeError) as exc:
+            print(type(exc).__name__, file=sys.stderr)
+            raise PlanError("harness_import") from exc
+        _emit_overall(dry_harness, [])
         return 0
     root = harness_root(_candidates(os.environ.get("HARNESS_CANDIDATES", "")))
     if root is None:
@@ -488,15 +511,16 @@ def _target(role: str) -> int:
             raise PlanError("refusal")
         _assert_logs_clean()
         _record_ds()
+        _emit_overall(harness, [])
         return 0
     _stage_harness(name, harness, loader_dir, deb_dir)
-    _run_phases(name, harness)
+    accepted = _run_phases(name, harness)
     soaked = _guest(name, "soak", role)
     if soaked.returncode != 0:
         raise PlanError("soak")
     _assert_logs_clean()
     _record_ds()
-    print(f"live_enforcement={enforcement_claim()}")
+    _emit_overall(harness, accepted)
     return 0
 
 
@@ -577,6 +601,24 @@ def main(argv: list[str]) -> int:
             text = _record_ds()
             if not ds_is_hold(0, text):
                 return 2
+            return 0
+        if command == "summary":
+            text = _record_ds()
+            if not ds_is_hold(0, text):
+                return 2
+            root = harness_root(_candidates(os.environ.get("HARNESS_CANDIDATES", "")))
+            if root is None:
+                raise PlanError("harness_entrypoint_missing")
+            try:
+                harness = _load_harness(root)
+            except (ImportError, OSError, RuntimeError) as exc:
+                print(type(exc).__name__, file=sys.stderr)
+                raise PlanError("harness_import") from exc
+            rows = list(harness.green_full_rows())  # type: ignore[attr-defined]
+            for phase, lines, returncode in rows:
+                if not harness.phase_accepted(phase, lines, returncode):  # type: ignore[attr-defined]
+                    raise PlanError("overall")
+            _emit_overall(harness, rows)
             return 0
     except PlanError as exc:
         print(exc.reason, file=sys.stderr)

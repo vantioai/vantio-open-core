@@ -2,7 +2,8 @@
 name: GCP stage 4 lab
 
 # workflow_dispatch only. Do not add push, pull_request, or schedule.
-# live_enforcement stays NOT_PROVEN until a person runs this and the grade passes.
+# live_enforcement stays NOT_PROVEN. The overall grade stays INCOMPLETE
+# while DS is not wired. A green phase list is not PASS.
 # This file does not dispatch itself.
 #
 # Workload identity stays in gcp-lab-cost-gate.yml. That file's provider,
@@ -128,6 +129,10 @@ jobs:
         with:
           repository: vantioai/vantio-phantom-engine
           ref: ${{ steps.pin.outputs.sha }}
+          # DRAFT ONLY. One-line swap. This token is slated for revocation.
+          # Zach decides the replacement. This file does not create one.
+          # (a) fine-grained read-only token, vantio-phantom-engine contents
+          # (b) read-only deploy key scoped to vantio-phantom-engine
           token: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
           persist-credentials: false
           path: pe-src

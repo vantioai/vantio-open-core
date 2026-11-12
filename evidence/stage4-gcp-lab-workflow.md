@@ -35,16 +35,24 @@ jobs are in this branch's copy of that file. They run only after this
 change is on `main`. This run did not read the live IAM condition and did
 not change IAM, the provider, the service account, or the environment.
 
-The Phantom Engine tree is checked out read-only with the existing secret
-name `W3_LAB_PRIVATE_BUNDLE_TOKEN`, the same name
-`gcp-lab-enforcement-proof.yml` already uses. The value was not read and
-was not printed. No new secret was created.
+The Phantom Engine checkout is draft-only. It depends on the secret name
+`W3_LAB_PRIVATE_BUNDLE_TOKEN`. That token is slated for revocation. This
+is not a settled dependency. The name appears once, on the checkout step
+in `.github/workflows/gcp-stage4-lab.yml`, so a swap is that one line.
+The value was not read and was not printed. No token, key, or secret was
+created. The replacement is a decision for Zach, and neither option is
+wired here:
+
+- a fine-grained read-only token scoped to `vantio-phantom-engine` contents
+- a read-only deploy key scoped to `vantio-phantom-engine`
 
 The harness used in this repo is `scripts/gcp/enforcement_proof.py`.
 `scripts/gcp/guest_phases.sh` and `scripts/gcp/proof_grade.py` are not
 required and are not in this tree. The drive calls `phases_for("full")`
-and `phase_accepted`. It does not call `run_proof`, because that function
-creates its own VM. There is no 31-phase count. `PE_GIT_SHA` passed into
+and `phase_accepted`. The overall grade is
+`enforcement_proof.overall_grade`, called from `scripts/lab/stage4_drive.py`
+(`summary`, and again after accepted phases). It does not call `run_proof`,
+because that function creates its own VM. There is no 31-phase count. `PE_GIT_SHA` passed into
 `precheck` is that module's constant
 `864289cb2c9c4135d74233c74c6655087de3f20d`. The fetch job checks out that
 commit and `scripts/gcp/build_pe_loader.sh` builds the loader on the
@@ -100,8 +108,11 @@ cloned. `python3 scripts/lab/stage4_plan.py ds-hold` prints:
 DS NOT WIRED — waiting on #85 run 26
 ```
 
-That command exits 0. It does not print PASS. Exit 2 is the guard for a
-bad project or a missing harness, not the DS step.
+That command exits 0. It does not print PASS. The job summary step is
+`python3 scripts/lab/stage4_drive.py summary`. That command also exits 0.
+It grades `enforcement_proof.green_full_rows()` with DS unwired and prints
+`OVERALL INCOMPLETE`. A fully green phase list is not `OVERALL PASS`.
+Exit 2 is the guard for a bad project or a missing harness, not the DS step.
 
 ## Commands
 
@@ -166,7 +177,8 @@ on the file this change edits. The value assigned is unchanged.
 - The image pins `debian-13-trixie-v20261102` /
   `6.12.116+deb13-cloud-amd64` and `ubuntu-2604-resolute-amd64-v20261107` /
   `7.0.0-1016-gcp` were not booted.
-- DS checks are not wired. The hold is not a pass.
+- DS checks are not wired. The hold exits 0. The overall grade is
+  INCOMPLETE, not PASS, including when every harness phase is accepted.
 - The founder go was not supplied. An empty `run_go` fails the guard
   before a VM.
 - Quinn is still a blocker for a live run. This run did not contact Quinn.

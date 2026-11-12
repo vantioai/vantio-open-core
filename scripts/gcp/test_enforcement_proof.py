@@ -129,6 +129,13 @@ class ObservationTests(unittest.TestCase):
         self.assertIsNone(ep.keep_line("compare=pass"))
         self.assertIsNone(ep.keep_line("compare=PROVEN"))
         self.assertIsNone(ep.keep_line(f"note={GO}"))
+        rows = ep.green_full_rows()
+        for phase, lines, returncode in rows:
+            self.assertTrue(ep.phase_accepted(phase, lines, returncode))
+        self.assertEqual(ep.overall_grade(rows, ds_wired=False), "INCOMPLETE")
+        self.assertNotEqual(ep.overall_grade(rows, ds_wired=False), "PASS")
+        self.assertEqual(ep.overall_grade(rows, ds_wired=True), "NOT_PROVEN")
+        self.assertNotEqual(ep.overall_grade(rows, ds_wired=True), "PASS")
         self.assertTrue(ep.phase_accepted("compare", ["compare=PASS"], 0))
         self.assertFalse(ep.phase_accepted("compare", ["compare=REFUSED_LSM"], 0))
         self.assertTrue(

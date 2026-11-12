@@ -233,8 +233,12 @@ class Stage4PlanTests(unittest.TestCase):
             ["debian", "ubuntu", "refuse"],
         )
         self.assertIn("inputs.stage4 == '1'", doc["jobs"]["stage4-target"]["if"])
-        self.assertIn("stage4_plan.py ds-hold", text)
+        self.assertIn("stage4_drive.py summary", text)
+        self.assertIn("GITHUB_STEP_SUMMARY", text)
         caller_text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(caller_text.count("secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN"), 1)
+        self.assertIn("DRAFT ONLY", caller_text)
+        self.assertIn("slated for revocation", caller_text)
         caller = yaml.safe_load(caller_text)
         self.assertEqual(
             caller["jobs"]["lab"]["uses"],
@@ -288,6 +292,49 @@ class Stage4PlanTests(unittest.TestCase):
         self.assertTrue(stage4_plan.ds_is_hold(completed.returncode, completed.stdout))
         self.assertNotIn("PASS", completed.stdout)
         self.assertIn("7fd76a673d4ad06b9c74e8257585d716ea7305ea", completed.stdout)
+
+    def test_green_run_with_the_ds_hold_is_not_pass(self) -> None:
+        rows = enforcement_proof.green_full_rows()
+        self.assertGreaterEqual(len(rows), 6)
+        for phase, lines, returncode in rows:
+            self.assertTrue(enforcement_proof.phase_accepted(phase, lines, returncode))
+        hold = stage4_plan.ds_hold_text("cursor/redteam-holds-8374")
+        self.assertTrue(stage4_plan.ds_is_hold(0, hold))
+        grade = enforcement_proof.overall_grade(rows, ds_wired=False)
+        self.assertIn(grade, {"NOT_PROVEN", "INCOMPLETE"})
+        self.assertNotEqual(grade, "PASS")
+        self.assertEqual(grade, "INCOMPLETE")
+        refused = [
+            (phase, ["compare=REFUSED_LSM"] if phase == "compare" else list(lines), returncode)
+            for phase, lines, returncode in rows
+        ]
+        self.assertFalse(enforcement_proof.phase_accepted("compare", ["compare=REFUSED_LSM"], 0))
+        self.assertNotEqual(enforcement_proof.overall_grade(refused, ds_wired=False), "PASS")
+        self.assertNotEqual(enforcement_proof.overall_grade(rows, ds_wired=True), "PASS")
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DS_REF": "cursor/redteam-holds-8374",
+                    "RUN_GO": "run-go-ok",
+                    "HARNESS_CANDIDATES": str(ROOT),
+                    "STAGE4_LOG_DIR": tmp,
+                }
+            )
+            env.pop("GCP_LAB_EXECUTE", None)
+            completed = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "lab" / "stage4_drive.py"), "summary"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn(stage4_plan.DS_HOLD, completed.stdout)
+        self.assertIn("OVERALL INCOMPLETE", completed.stdout)
+        self.assertNotIn("OVERALL PASS", completed.stdout)
+        self.assertNotRegex(completed.stdout, r"(?m)^OVERALL PASS$")
+        self.assertIn("live_enforcement=NOT_PROVEN", completed.stdout)
 
     def test_short_harness_is_rejected(self) -> None:
         with self.assertRaises(stage4_plan.PlanError) as caught:
