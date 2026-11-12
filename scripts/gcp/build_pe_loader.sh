@@ -157,7 +157,7 @@ tar --zstd -C "$HOME/.cargo/bin" -xf /tmp/bpf-linker.tar.zst bpf-linker
 chmod 0755 "$HOME/.cargo/bin/cargo-binstall" "$HOME/.cargo/bin/bpf-linker"
 export CARGO_HOME=/tmp/cargo
 export CARGO_TARGET_DIR=/tmp/target
-cargo build -p vantio-loader --release
+cargo build -p vantio-loader --release --locked
 install -m 0755 /tmp/target/release/vantio-loader /out/vantio-loader
 if ldd /out/vantio-loader | grep -E "libssl|libcrypto"; then
   echo "loader_libs" >&2

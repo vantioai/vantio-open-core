@@ -106,7 +106,7 @@ twice on the same download and matched. The GitHub asset size was
 27990131 bytes. This run did not start Docker and did not build the
 loader. Those checks do not make the container a match for the guest
 kernel. No binary was booted on either pin. The guest script does not
-install packages.
+install packages. `cargo build -p vantio-loader --release --locked` enforces the Phantom Engine `Cargo.lock`.
 
 The harness used in this repo is `scripts/gcp/enforcement_proof.py`.
 `scripts/gcp/guest_phases.sh` and `scripts/gcp/proof_grade.py` are not
@@ -281,7 +281,8 @@ on the file this change edits. The value assigned is unchanged.
   started. cargo-binstall `v1.27.0`, bpf-linker `0.13.0`, and rustup
   `1.29.3` were not downloaded by the unit test. That test uses a fake
   `docker` and checks the digest ref in the recorded arguments. `cargo
-  build` still fetches crates. Those crate bytes are not pinned here.
+  build -p vantio-loader --release --locked` enforces the Phantom Engine
+  `Cargo.lock`.
 - DS checks are not wired. The hold exits 0. The overall grade is
   INCOMPLETE, not PASS, including when every harness phase is accepted.
 - The founder go was not supplied. An empty `run_go` fails the guard
