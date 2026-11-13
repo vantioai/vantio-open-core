@@ -16,7 +16,7 @@ Hold. Zach merges this workflow to `main`, then Zach clicks `workflow_dispatch`.
 | Ref it accepts | `refs/heads/main` |
 | Project | `vantio-lab-oct08` |
 | Zone | `us-central1-a` |
-| Guest | Ubuntu 24.04, image family `ubuntu-2404-lts-amd64`, machine `e2-micro`, no public IP, no guest service account, OS Login, IAP |
+| Guest | `6.8` default: Ubuntu 24.04, `ubuntu-2404-lts-amd64`. `7.0`: `ubuntu-2604-lts-amd64`. `6.12`: Debian 13, `debian-13`. Machine `e2-micro`, no public IP, no guest service account, OS Login, IAP |
 | Git tip | One full 40-character lowercase hex commit from `scripts/gcp/pe-git-sha-allowlist.txt`: `864289cb2c9c4135d74233c74c6655087de3f20d`, `b3567a2aa3d705e8214e1cc671d30c31b9ac1c98`, or `4bfb4fdcd52b85137d54dd5e45a46d71a2361b59`. Every allowlisted commit must be an ancestor of Phantom Engine `main`. |
 | Lab directory | `/var/lib/vantio-enforcement-proof` |
 
@@ -35,6 +35,13 @@ Zach clicks **GCP lab enforcement proof** on `main`.
 | `instance_name` | Empty, except `reboot-post`. Then paste the `vantio-gcp-lab-` name from the earlier run. |
 | `stop_after_minutes` | `120` for `full`. Allowed range is 90 through 120. |
 | `uninstall_approval` | Empty unless Zach is supplying `VANTIO_LAB_UNINSTALL_APPROVAL`. Empty is not printed. The script then records `uninstall=NOT_RUN_NO_APPROVAL` when the host is enrolled, or `uninstall=REFUSED_NOT_ENROLLED` when it is not. |
+| `guest_kernel` | `6.8` (default), `7.0`, or `6.12`. `6.8` is `ubuntu-os-cloud/ubuntu-2404-lts-amd64`. `7.0` is `ubuntu-os-cloud/ubuntu-2604-lts-amd64`. `6.12` is `debian-cloud/debian-13`. Any other value fails before a VM. After the lab service account resolves that family, the guest `uname -r` must start with the chosen version. |
+
+## Guest kernel
+
+The name is checked before the cost gate. The family is resolved with `gcloud compute images describe-from-family` after the lab service account is authenticated and before `instances create`. A failed resolve does not create a VM. After SSH is up, `uname -r` must start with `6.8`, `7.0`, or `6.12` for that choice, and the next character must be `.`, `-`, or the end of the string. A mismatch stops the proof.
+
+This branch did not read the lab project's org policies. Public images in `ubuntu-os-cloud` and `debian-cloud` are normally usable by any authenticated principal. If `constraints/compute.trustedImageProjects` is set on the project, folder, or organization, it has to include `projects/ubuntu-os-cloud` and `projects/debian-cloud` or the resolve fails closed. The next proof run is what shows whether the lab service account can use the family. `live_enforcement` stays **NOT_PROVEN**.
 
 The runner reaches the guest with the existing IAP helper: `gcloud compute ssh`, `--tunnel-through-iap`, `--project=vantio-lab-oct08`, `--zone=us-central1-a`, OS Login key expiry one hour. There is no laptop login in this workflow. The IAP command is `sudo bash /var/lib/vantio-lab/guest/run-proof-phase.sh PHASE`. The run go stays in a mode `0600` file on the guest, not in that command.
 
