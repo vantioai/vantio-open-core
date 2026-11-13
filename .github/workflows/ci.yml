@@ -182,6 +182,7 @@ jobs:
           python3 scripts/gcp/test_lab_auto.py -v
           python3 scripts/gcp/test_enforcement_proof.py -v
           python3 scripts/gcp/test_writable_ebpf_target.py -v
+          python3 scripts/gcp/test_guest_kernel_choice.py -v
           python3 scripts/gcp/test_offline_deliver.py -v
           python3 scripts/gcp/test_gcp_2d_restart.py -v
           python3 scripts/gcp/test_gcp_phase_batteries.py -v
