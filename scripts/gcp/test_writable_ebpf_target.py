@@ -56,16 +56,17 @@ echo ok > /mnt/target/ebpf/made
 test "$(cat /mnt/target/ebpf/made)" = ok
 echo repro-ok
 """
+        if os.geteuid() == 0:
+            command = ["bash", "-c", script]
+        else:
+            command = ["sudo", "-n", "bash", "-c", script]
         done = subprocess.run(
-            ["unshare", "--user", "--map-root-user", "--mount", "bash", "-c", script],
+            command,
             capture_output=True,
             text=True,
             check=False,
         )
-        if done.returncode != 0 and "Operation not permitted" in done.stderr:
-            print("read-only target repro skipped: unshare is not permitted")
-            return
-        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertIn("repro-ok", done.stdout)
 
     def test_the_script_passes_those_mounts_to_docker(self) -> None:
